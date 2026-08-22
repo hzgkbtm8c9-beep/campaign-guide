@@ -398,4 +398,140 @@ export async function removeReviewDestination(
   }
 
   await db.reviewDestinations.delete(destinationId)
+}export async function createPerson(
+  campaignId: string,
+  name: string
+) {
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    throw new Error('Person name is required.')
+  }
+
+  const campaign = await db.campaigns.get(campaignId)
+
+  if (!campaign) {
+    throw new Error('Campaign not found.')
+  }
+
+  const timestamp = new Date().toISOString()
+
+  const person = {
+    id: crypto.randomUUID(),
+    campaignId,
+    name: trimmedName,
+    description: '',
+    notes: '',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.people.add(person)
+
+  return person
+}
+
+export async function getPeople(
+  campaignId: string
+) {
+  return db.people
+    .where('campaignId')
+    .equals(campaignId)
+    .sortBy('name')
+}
+
+export async function getPerson(
+  personId: string
+) {
+  return db.people.get(personId)
+}export async function addPersonDestination(
+  reviewItemId: string,
+  personId: string,
+  initialText: string
+) {
+  const reviewItem =
+    await db.reviewItems.get(reviewItemId)
+
+  if (!reviewItem) {
+    throw new Error('Review item not found.')
+  }
+
+  const person =
+    await db.people.get(personId)
+
+  if (!person) {
+    throw new Error('Person not found.')
+  }
+
+  const existing =
+    await db.reviewDestinations
+      .where('reviewItemId')
+      .equals(reviewItemId)
+      .filter(
+        (destination) =>
+          destination.destinationType === 'person' &&
+          destination.targetId === personId
+      )
+      .first()
+
+  if (existing) {
+    return existing
+  }
+
+  const timestamp = new Date().toISOString()
+
+  const destination = {
+    id: crypto.randomUUID(),
+    reviewItemId,
+    destinationType: 'person' as const,
+    targetId: personId,
+    text: initialText,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.reviewDestinations.add(destination)
+
+  return destination
+}
+
+export async function createPersonAndDestination(
+  campaignId: string,
+  reviewItemId: string,
+  personName: string,
+  initialText: string
+) {
+  return db.transaction(
+    'rw',
+    db.campaigns,
+    db.people,
+    db.reviewItems,
+    db.reviewDestinations,
+    async () => {
+      const reviewItem =
+        await db.reviewItems.get(reviewItemId)
+
+      if (!reviewItem) {
+        throw new Error('Review item not found.')
+      }
+
+      const person =
+        await createPerson(
+          campaignId,
+          personName
+        )
+
+      const destination =
+        await addPersonDestination(
+          reviewItemId,
+          person.id,
+          initialText
+        )
+
+      return {
+        person,
+        destination,
+      }
+    }
+  )
 }

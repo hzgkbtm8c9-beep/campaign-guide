@@ -3,12 +3,15 @@ import './App.css'
 
 import {
   addJournalDestination,
+  addPersonDestination,
   createCampaign,
+  createPersonAndDestination,
   createQuickNote,
   endSession,
   getActiveSession,
   getCampaign,
   getOpenReviews,
+  getPeople,
   getQuickNotesForSession,
   getReviewDestinations,
   removeReviewDestination,
@@ -21,6 +24,7 @@ import {
 
 import type {
   Campaign,
+  Person,
   QuickNote,
   ReviewDestination,
   ReviewDraft,
@@ -106,7 +110,9 @@ function QuickNoteModal({
           autoFocus
         />
 
-        {error && <p className="form-error">{error}</p>}
+        {error && (
+          <p className="form-error">{error}</p>
+        )}
 
         <div className="modal-actions">
           <button
@@ -160,10 +166,22 @@ function ReviewScreen({
   const [destinations, setDestinations] =
     useState<ReviewDestination[]>([])
 
+  const [people, setPeople] =
+    useState<Person[]>([])
+
   const [
     isLoadingDestinations,
     setIsLoadingDestinations,
   ] = useState(true)
+
+  const [showPersonPicker, setShowPersonPicker] =
+    useState(false)
+
+  const [newPersonName, setNewPersonName] =
+    useState('')
+
+  const [personError, setPersonError] =
+    useState('')
 
   const currentItem = items[currentIndex]
 
@@ -177,6 +195,23 @@ function ReviewScreen({
       (destination) =>
         destination.destinationType === 'journal'
     )
+
+  const personDestinations =
+    destinations.filter(
+      (destination) =>
+        destination.destinationType === 'person'
+    )
+
+  useEffect(() => {
+    async function loadPeople() {
+      const result =
+        await getPeople(session.campaignId)
+
+      setPeople(result)
+    }
+
+    void loadPeople()
+  }, [session.campaignId])
 
   useEffect(() => {
     if (!currentItem) {
@@ -256,6 +291,36 @@ function ReviewScreen({
     journalDestination?.text,
   ])
 
+  useEffect(() => {
+    const personDestinationsToSave =
+      destinations.filter(
+        (destination) =>
+          destination.destinationType === 'person'
+      )
+
+    const timers =
+      personDestinationsToSave.map(
+        (destination) =>
+          window.setTimeout(() => {
+            void updateReviewDestinationText(
+              destination.id,
+              destination.text
+            ).catch((error) => {
+              console.error(
+                'Could not auto-save Person destination.',
+                error
+              )
+            })
+          }, 500)
+      )
+
+    return () => {
+      timers.forEach((timer) =>
+        window.clearTimeout(timer)
+      )
+    }
+  }, [destinations])
+
   function handleWorkingTextChange(
     newText: string
   ) {
@@ -294,6 +359,31 @@ function ReviewScreen({
     )
   }
 
+  function handlePersonDestinationTextChange(
+    destinationId: string,
+    text: string
+  ) {
+    setDestinations((current) =>
+      current.map((destination) =>
+        destination.id === destinationId
+          ? {
+              ...destination,
+              text,
+            }
+          : destination
+      )
+    )
+  }
+
+  function getPersonForDestination(
+    destination: ReviewDestination
+  ) {
+    return people.find(
+      (person) =>
+        person.id === destination.targetId
+    )
+  }
+
   async function handleAddJournal() {
     if (!currentItem) {
       return
@@ -306,9 +396,11 @@ function ReviewScreen({
       )
 
     setDestinations((current) => {
-      const alreadyExists = current.some(
-        (item) => item.id === destination.id
-      )
+      const alreadyExists =
+        current.some(
+          (item) =>
+            item.id === destination.id
+        )
 
       if (alreadyExists) {
         return current
@@ -336,6 +428,111 @@ function ReviewScreen({
     )
   }
 
+  async function handleAddExistingPerson(
+    person: Person
+  ) {
+    if (!currentItem) {
+      return
+    }
+
+    setPersonError('')
+
+    try {
+      const destination =
+        await addPersonDestination(
+          currentItem.id,
+          person.id,
+          currentItem.workingText
+        )
+
+      setDestinations((current) => {
+        const alreadyExists =
+          current.some(
+            (item) =>
+              item.id === destination.id
+          )
+
+        if (alreadyExists) {
+          return current
+        }
+
+        return [...current, destination]
+      })
+
+      setShowPersonPicker(false)
+    } catch (error) {
+      console.error(error)
+
+      setPersonError(
+        'Person destination could not be added.'
+      )
+    }
+  }
+
+  async function handleCreatePerson() {
+    if (!currentItem) {
+      return
+    }
+
+    const trimmedName =
+      newPersonName.trim()
+
+    if (!trimmedName) {
+      setPersonError(
+        'Person name is required.'
+      )
+      return
+    }
+
+    setPersonError('')
+
+    try {
+      const result =
+        await createPersonAndDestination(
+          session.campaignId,
+          currentItem.id,
+          trimmedName,
+          currentItem.workingText
+        )
+
+      setPeople((current) =>
+        [...current, result.person].sort(
+          (a, b) =>
+            a.name.localeCompare(b.name)
+        )
+      )
+
+      setDestinations((current) => [
+        ...current,
+        result.destination,
+      ])
+
+      setNewPersonName('')
+      setShowPersonPicker(false)
+    } catch (error) {
+      console.error(error)
+
+      setPersonError(
+        'Person could not be created.'
+      )
+    }
+  }
+
+  async function handleRemovePersonDestination(
+    destinationId: string
+  ) {
+    await removeReviewDestination(
+      destinationId
+    )
+
+    setDestinations((current) =>
+      current.filter(
+        (destination) =>
+          destination.id !== destinationId
+      )
+    )
+  }
+
   async function saveCurrentReviewState() {
     if (!currentItem) {
       return
@@ -346,10 +543,17 @@ function ReviewScreen({
       currentItem.workingText
     )
 
-    if (journalDestination) {
+    const destinationsToSave =
+      destinations.filter(
+        (destination) =>
+          destination.reviewItemId ===
+          currentItem.id
+      )
+
+    for (const destination of destinationsToSave) {
       await updateReviewDestinationText(
-        journalDestination.id,
-        journalDestination.text
+        destination.id,
+        destination.text
       )
     }
   }
@@ -369,6 +573,10 @@ function ReviewScreen({
       reviewDraft.id,
       nextItem.id
     )
+
+    setShowPersonPicker(false)
+    setPersonError('')
+    setNewPersonName('')
 
     setCurrentIndex(nextIndex)
   }
@@ -398,7 +606,10 @@ function ReviewScreen({
 
         <div className="review-panel">
           <h1>Session Review</h1>
-          <p>No review items were found.</p>
+
+          <p>
+            No review items were found.
+          </p>
         </div>
       </main>
     )
@@ -463,46 +674,190 @@ function ReviewScreen({
             <p className="review-help">
               Loading destinations…
             </p>
-          ) : journalDestination ? (
-            <div className="destination-card">
-              <div className="destination-heading">
-                <strong>Journal</strong>
-
-                <button
-                  className="destination-remove"
-                  onClick={handleRemoveJournal}
-                >
-                  Remove
-                </button>
-              </div>
-
-              <textarea
-                value={journalDestination.text}
-                onChange={(event) =>
-                  handleJournalTextChange(
-                    event.target.value
-                  )
-                }
-              />
-
-              <p className="review-help">
-                Journal text is now independent from
-                Working Text.
-              </p>
-            </div>
           ) : (
             <>
-              <p className="review-help">
-                Choose where this reviewed information
-                should be used.
-              </p>
+              <div>
+                <h3>Journal</h3>
 
-              <button
-                className="destination-add"
-                onClick={handleAddJournal}
-              >
-                + Add to Journal
-              </button>
+                {journalDestination ? (
+                  <div className="destination-card">
+                    <div className="destination-heading">
+                      <strong>Journal</strong>
+
+                      <button
+                        className="destination-remove"
+                        onClick={
+                          handleRemoveJournal
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <textarea
+                      value={
+                        journalDestination.text
+                      }
+                      onChange={(event) =>
+                        handleJournalTextChange(
+                          event.target.value
+                        )
+                      }
+                    />
+
+                    <p className="review-help">
+                      Journal text is independent
+                      from Working Text.
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    className="destination-add"
+                    onClick={
+                      handleAddJournal
+                    }
+                  >
+                    + Add to Journal
+                  </button>
+                )}
+              </div>
+
+              <div className="person-destinations">
+                <h3>People</h3>
+
+                {personDestinations.map(
+                  (destination) => {
+                    const person =
+                      getPersonForDestination(
+                        destination
+                      )
+
+                    return (
+                      <div
+                        className="destination-card"
+                        key={destination.id}
+                      >
+                        <div className="destination-heading">
+                          <strong>
+                            {person?.name ??
+                              'Unavailable Person'}
+                          </strong>
+
+                          <button
+                            className="destination-remove"
+                            onClick={() =>
+                              void handleRemovePersonDestination(
+                                destination.id
+                              )
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <textarea
+                          value={
+                            destination.text
+                          }
+                          onChange={(event) =>
+                            handlePersonDestinationTextChange(
+                              destination.id,
+                              event.target.value
+                            )
+                          }
+                        />
+
+                        <p className="review-help">
+                          This Person contribution is
+                          independent from Working Text.
+                        </p>
+                      </div>
+                    )
+                  }
+                )}
+
+                {!showPersonPicker ? (
+                  <button
+                    className="destination-add"
+                    onClick={() =>
+                      setShowPersonPicker(true)
+                    }
+                  >
+                    + Add to Person
+                  </button>
+                ) : (
+                  <div className="person-picker">
+                    <h4>Choose Person</h4>
+
+                    {people.length > 0 ? (
+                      <div className="person-picker-list">
+                        {people.map(
+                          (person) => (
+                            <button
+                              key={person.id}
+                              className="person-picker-item"
+                              onClick={() =>
+                                void handleAddExistingPerson(
+                                  person
+                                )
+                              }
+                            >
+                              {person.name}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    ) : (
+                      <p className="review-help">
+                        No People exist yet.
+                      </p>
+                    )}
+
+                    <div className="new-person-box">
+                      <label htmlFor="new-person-name">
+                        Create New Person
+                      </label>
+
+                      <input
+                        id="new-person-name"
+                        value={newPersonName}
+                        onChange={(event) =>
+                          setNewPersonName(
+                            event.target.value
+                          )
+                        }
+                        placeholder="Person name"
+                      />
+
+                      <button
+                        className="destination-add"
+                        onClick={() =>
+                          void handleCreatePerson()
+                        }
+                      >
+                        Create and Add
+                      </button>
+                    </div>
+
+                    {personError && (
+                      <p className="form-error">
+                        {personError}
+                      </p>
+                    )}
+
+                    <button
+                      className="modal-cancel"
+                      onClick={() => {
+                        setShowPersonPicker(false)
+                        setPersonError('')
+                        setNewPersonName('')
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -511,9 +866,13 @@ function ReviewScreen({
           <button
             className="modal-cancel"
             onClick={() =>
-              void goToIndex(currentIndex - 1)
+              void goToIndex(
+                currentIndex - 1
+              )
             }
-            disabled={currentIndex === 0}
+            disabled={
+              currentIndex === 0
+            }
           >
             Previous
           </button>
@@ -521,10 +880,13 @@ function ReviewScreen({
           <button
             className="primary-button"
             onClick={() =>
-              void goToIndex(currentIndex + 1)
+              void goToIndex(
+                currentIndex + 1
+              )
             }
             disabled={
-              currentIndex === items.length - 1
+              currentIndex ===
+              items.length - 1
             }
           >
             Next
@@ -563,17 +925,23 @@ function TodayPage({
   const [error, setError] =
     useState('')
 
-  const [showQuickNote, setShowQuickNote] =
-    useState(false)
+  const [
+    showQuickNote,
+    setShowQuickNote,
+  ] = useState(false)
 
   async function handleStartSession() {
     try {
       setError('')
       setIsStarting(true)
+
       await onStartSession()
     } catch (err) {
       console.error(err)
-      setError('Session could not be started.')
+
+      setError(
+        'Session could not be started.'
+      )
     } finally {
       setIsStarting(false)
     }
@@ -583,10 +951,14 @@ function TodayPage({
     try {
       setError('')
       setIsEnding(true)
+
       await onEndSession()
     } catch (err) {
       console.error(err)
-      setError('Session could not be ended.')
+
+      setError(
+        'Session could not be ended.'
+      )
     } finally {
       setIsEnding(false)
     }
@@ -609,7 +981,9 @@ function TodayPage({
               <p>
                 <strong>
                   Session{' '}
-                  {activeSession.sessionNumber}
+                  {
+                    activeSession.sessionNumber
+                  }
                 </strong>
               </p>
 
@@ -618,7 +992,8 @@ function TodayPage({
               </p>
 
               <p className="session-note-count">
-                Quick Notes: {quickNotes.length}
+                Quick Notes:{' '}
+                {quickNotes.length}
               </p>
 
               <button
@@ -632,7 +1007,9 @@ function TodayPage({
 
               <button
                 className="secondary-button"
-                onClick={handleEndSession}
+                onClick={
+                  handleEndSession
+                }
                 disabled={isEnding}
               >
                 {isEnding
@@ -653,7 +1030,9 @@ function TodayPage({
                     >
                       <strong>
                         Session{' '}
-                        {session.sessionNumber}
+                        {
+                          session.sessionNumber
+                        }
                       </strong>
 
                       <span>
@@ -666,7 +1045,9 @@ function TodayPage({
                       <button
                         className="review-button"
                         onClick={() =>
-                          onOpenReview(session)
+                          onOpenReview(
+                            session
+                          )
                         }
                       >
                         {session.status ===
@@ -681,7 +1062,9 @@ function TodayPage({
 
               <button
                 className="primary-button start-with-reviews"
-                onClick={handleStartSession}
+                onClick={
+                  handleStartSession
+                }
                 disabled={isStarting}
               >
                 {isStarting
@@ -697,7 +1080,9 @@ function TodayPage({
 
               <button
                 className="primary-button"
-                onClick={handleStartSession}
+                onClick={
+                  handleStartSession
+                }
                 disabled={isStarting}
               >
                 {isStarting
@@ -733,18 +1118,24 @@ function TodayPage({
         </div>
       </section>
 
-      {showQuickNote && activeSession && (
-        <QuickNoteModal
-          session={activeSession}
-          onClose={() =>
-            setShowQuickNote(false)
-          }
-          onSaved={(quickNote) => {
-            onQuickNoteSaved(quickNote)
-            setShowQuickNote(false)
-          }}
-        />
-      )}
+      {showQuickNote &&
+        activeSession && (
+          <QuickNoteModal
+            session={
+              activeSession
+            }
+            onClose={() =>
+              setShowQuickNote(false)
+            }
+            onSaved={(quickNote) => {
+              onQuickNoteSaved(
+                quickNote
+              )
+
+              setShowQuickNote(false)
+            }}
+          />
+        )}
     </>
   )
 }
@@ -782,16 +1173,24 @@ function CampaignSetup({
 }: {
   onCreated: (campaign: Campaign) => void
 }) {
-  const [name, setName] = useState('')
-  const [error, setError] = useState('')
-  const [isCreating, setIsCreating] =
-    useState(false)
+  const [name, setName] =
+    useState('')
+
+  const [error, setError] =
+    useState('')
+
+  const [
+    isCreating,
+    setIsCreating,
+  ] = useState(false)
 
   async function handleCreate() {
     setError('')
 
     if (!name.trim()) {
-      setError('Campaign name is required.')
+      setError(
+        'Campaign name is required.'
+      )
       return
     }
 
@@ -799,7 +1198,9 @@ function CampaignSetup({
       setIsCreating(true)
 
       const campaign =
-        await createCampaign(name)
+        await createCampaign(
+          name
+        )
 
       onCreated(campaign)
     } catch (err) {
@@ -816,17 +1217,20 @@ function CampaignSetup({
   return (
     <main className="setup-screen">
       <div className="setup-card">
-        <div className="setup-mark">✦</div>
+        <div className="setup-mark">
+          ✦
+        </div>
 
         <h1>
           Welcome to Campaign Guide
         </h1>
 
         <p>
-          Keep your sessions, character,
-          people, discoveries, goals, and
-          during-play notes together in one
-          place.
+          Keep your sessions,
+          character, people,
+          discoveries, goals, and
+          during-play notes together
+          in one place.
         </p>
 
         <label htmlFor="campaign-name">
@@ -837,7 +1241,9 @@ function CampaignSetup({
           id="campaign-name"
           value={name}
           onChange={(event) =>
-            setName(event.target.value)
+            setName(
+              event.target.value
+            )
           }
           placeholder="Enter campaign name"
           autoFocus
@@ -868,26 +1274,40 @@ function CampaignApp({
 }: {
   campaign: Campaign
 }) {
-  const [activeSection, setActiveSection] =
-    useState<Section>('today')
+  const [
+    activeSection,
+    setActiveSection,
+  ] = useState<Section>('today')
 
-  const [activeSession, setActiveSession] =
-    useState<Session | undefined>()
+  const [
+    activeSession,
+    setActiveSession,
+  ] = useState<Session | undefined>()
 
-  const [quickNotes, setQuickNotes] =
-    useState<QuickNote[]>([])
+  const [
+    quickNotes,
+    setQuickNotes,
+  ] = useState<QuickNote[]>([])
 
-  const [openReviews, setOpenReviews] =
-    useState<Session[]>([])
+  const [
+    openReviews,
+    setOpenReviews,
+  ] = useState<Session[]>([])
 
-  const [reviewSession, setReviewSession] =
-    useState<Session | undefined>()
+  const [
+    reviewSession,
+    setReviewSession,
+  ] = useState<Session | undefined>()
 
-  const [reviewDraft, setReviewDraft] =
-    useState<ReviewDraft | undefined>()
+  const [
+    reviewDraft,
+    setReviewDraft,
+  ] = useState<ReviewDraft | undefined>()
 
-  const [reviewItems, setReviewItems] =
-    useState<ReviewItem[]>([])
+  const [
+    reviewItems,
+    setReviewItems,
+  ] = useState<ReviewItem[]>([])
 
   const [
     reviewQuickNotes,
@@ -906,7 +1326,9 @@ function CampaignApp({
           campaign.id
         )
 
-      setActiveSession(session)
+      setActiveSession(
+        session
+      )
 
       if (session) {
         const notes =
@@ -924,20 +1346,27 @@ function CampaignApp({
             campaign.id
           )
 
-        setOpenReviews(reviews)
+        setOpenReviews(
+          reviews
+        )
       }
 
       setIsLoadingSession(false)
     }
 
-    loadSessionState()
+    void loadSessionState()
   }, [campaign.id])
 
   async function handleStartSession() {
     const newSession =
-      await startSession(campaign.id)
+      await startSession(
+        campaign.id
+      )
 
-    setActiveSession(newSession)
+    setActiveSession(
+      newSession
+    )
+
     setQuickNotes([])
     setOpenReviews([])
   }
@@ -959,7 +1388,9 @@ function CampaignApp({
         campaign.id
       )
 
-    setOpenReviews(reviews)
+    setOpenReviews(
+      reviews
+    )
   }
 
   async function handleOpenReview(
@@ -988,14 +1419,18 @@ function CampaignApp({
       result.reviewItems
     )
 
-    setReviewQuickNotes(notes)
+    setReviewQuickNotes(
+      notes
+    )
 
     const reviews =
       await getOpenReviews(
         campaign.id
       )
 
-    setOpenReviews(reviews)
+    setOpenReviews(
+      reviews
+    )
   }
 
   function closeReview() {
@@ -1014,7 +1449,9 @@ function CampaignApp({
         session={reviewSession}
         reviewDraft={reviewDraft}
         reviewItems={reviewItems}
-        quickNotes={reviewQuickNotes}
+        quickNotes={
+          reviewQuickNotes
+        }
         onClose={closeReview}
       />
     )
@@ -1031,7 +1468,8 @@ function CampaignApp({
   const activeLabel =
     sections.find(
       (section) =>
-        section.id === activeSection
+        section.id ===
+        activeSection
     )?.label ?? 'Today'
 
   return (
@@ -1100,7 +1538,9 @@ function CampaignApp({
             />
           ) : (
             <PlaceholderPage
-              title={activeLabel}
+              title={
+                activeLabel
+              }
             />
           )}
         </div>
@@ -1110,10 +1550,18 @@ function CampaignApp({
 }
 
 function App() {
-  const [campaign, setCampaign] =
-    useState<Campaign | undefined>()
+  const [
+    campaign,
+    setCampaign,
+  ] =
+    useState<
+      Campaign | undefined
+    >()
 
-  const [isLoading, setIsLoading] =
+  const [
+    isLoading,
+    setIsLoading,
+  ] =
     useState(true)
 
   useEffect(() => {
@@ -1128,7 +1576,7 @@ function App() {
       setIsLoading(false)
     }
 
-    loadCampaign()
+    void loadCampaign()
   }, [])
 
   if (isLoading) {

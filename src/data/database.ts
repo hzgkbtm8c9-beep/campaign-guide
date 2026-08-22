@@ -42,7 +42,15 @@ export interface QuickNote {
   createdAt: string
   updatedAt: string
 }
-
+export interface Person {
+  id: string
+  campaignId: string
+  name: string
+  description: string
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
 export interface ReviewDraft {
   id: string
   campaignId: string
@@ -77,6 +85,7 @@ class CampaignGuideDatabase extends Dexie {
   campaigns!: EntityTable<Campaign, 'id'>
   sessions!: EntityTable<Session, 'id'>
   quickNotes!: EntityTable<QuickNote, 'id'>
+  people!: EntityTable<Person, 'id'>
   reviewDrafts!: EntityTable<ReviewDraft, 'id'>
   reviewItems!: EntityTable<ReviewItem, 'id'>
   reviewDestinations!: EntityTable<
@@ -141,6 +150,21 @@ class CampaignGuideDatabase extends Dexie {
       reviewDestinations:
         'id, reviewItemId, destinationType, targetId',
     })
+    this.version(6).stores({
+      campaigns: 'id, name, createdAt',
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+      quickNotes:
+       'id, campaignId, sessionId, capturedAt',
+      people:
+        'id, campaignId, name, createdAt',
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+})
   }
 }
 

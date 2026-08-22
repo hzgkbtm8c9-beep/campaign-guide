@@ -440,4 +440,68 @@ h1 {
   margin-top: 28px;
   display: flex;
   justify-content: space-between;
+}.person-destinations {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid #c7b58e;
+}
+
+.person-destinations h3 {
+  color: #173550;
+  margin: 0 0 14px;
+}
+
+.person-picker {
+  margin-top: 14px;
+  padding: 18px;
+  background: #e8dcc0;
+  border: 1px solid #b9a477;
+  border-radius: 8px;
+}
+
+.person-picker h4 {
+  color: #173550;
+  margin: 0 0 12px;
+}
+
+.person-picker-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.person-picker-item {
+  text-align: left;
+  border: 1px solid #a99368;
+  background: #fffaf0;
+  color: #30251b;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.person-picker-item:hover {
+  border-color: #173550;
+}
+
+.new-person-box {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+  padding-top: 18px;
+  border-top: 1px solid #c7b58e;
+}
+
+.new-person-box label {
+  color: #173550;
+  font-weight: bold;
+}
+
+.new-person-box input {
+  width: 100%;
+  border: 1px solid #a99368;
+  background: #fffaf0;
+  color: #30251b;
+  padding: 10px 12px;
+  border-radius: 6px;
 }
