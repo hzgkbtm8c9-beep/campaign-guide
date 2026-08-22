@@ -42,6 +42,7 @@ export interface QuickNote {
   createdAt: string
   updatedAt: string
 }
+
 export interface Person {
   id: string
   campaignId: string
@@ -51,6 +52,26 @@ export interface Person {
   createdAt: string
   updatedAt: string
 }
+
+export interface DiscoveryCategory {
+  id: string
+  campaignId: string
+  name: string
+  sortPosition: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Discovery {
+  id: string
+  campaignId: string
+  title: string
+  categoryId: string
+  discoveredInSessionId?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ReviewDraft {
   id: string
   campaignId: string
@@ -71,6 +92,15 @@ export interface ReviewItem {
   updatedAt: string
 }
 
+export interface ReviewDraftPerson {
+  id: string
+  reviewDraftId: string
+  name: string
+  role?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ReviewDestination {
   id: string
   reviewItemId: string
@@ -86,8 +116,17 @@ class CampaignGuideDatabase extends Dexie {
   sessions!: EntityTable<Session, 'id'>
   quickNotes!: EntityTable<QuickNote, 'id'>
   people!: EntityTable<Person, 'id'>
+  discoveryCategories!: EntityTable<
+    DiscoveryCategory,
+    'id'
+  >
+  discoveries!: EntityTable<Discovery, 'id'>
   reviewDrafts!: EntityTable<ReviewDraft, 'id'>
   reviewItems!: EntityTable<ReviewItem, 'id'>
+  reviewDraftPeople!: EntityTable<
+    ReviewDraftPerson,
+    'id'
+  >
   reviewDestinations!: EntityTable<
     ReviewDestination,
     'id'
@@ -113,7 +152,7 @@ class CampaignGuideDatabase extends Dexie {
     this.version(3).stores({
       campaigns: 'id, name, createdAt',
       sessions:
-        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+        'id, campaignId, sessionId, status, currentReviewItemId',
       quickNotes:
         'id, campaignId, sessionId, capturedAt',
       reviewDrafts:
@@ -150,12 +189,13 @@ class CampaignGuideDatabase extends Dexie {
       reviewDestinations:
         'id, reviewItemId, destinationType, targetId',
     })
+
     this.version(6).stores({
       campaigns: 'id, name, createdAt',
       sessions:
         'id, campaignId, sessionNumber, status, startedAt, retiredAt',
       quickNotes:
-       'id, campaignId, sessionId, capturedAt',
+        'id, campaignId, sessionId, capturedAt',
       people:
         'id, campaignId, name, createdAt',
       reviewDrafts:
@@ -164,7 +204,49 @@ class CampaignGuideDatabase extends Dexie {
         'id, reviewDraftId, quickNoteId',
       reviewDestinations:
         'id, reviewItemId, destinationType, targetId',
-})
+    })
+
+    this.version(7).stores({
+      campaigns: 'id, name, createdAt',
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+      people:
+        'id, campaignId, name, createdAt',
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
+
+    this.version(8).stores({
+      campaigns: 'id, name, createdAt',
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+      people:
+        'id, campaignId, name, createdAt',
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
   }
 }
 

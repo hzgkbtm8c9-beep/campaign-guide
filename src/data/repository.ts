@@ -4,11 +4,15 @@ function nowIso() {
   return new Date().toISOString()
 }
 
-export async function getCampaign(): Promise<Campaign | undefined> {
+export async function getCampaign(): Promise<
+  Campaign | undefined
+> {
   return db.campaigns.toCollection().first()
 }
 
-export async function createCampaign(name: string): Promise<Campaign> {
+export async function createCampaign(
+  name: string
+): Promise<Campaign> {
   const trimmedName = name.trim()
 
   if (!trimmedName) {
@@ -27,15 +31,24 @@ export async function createCampaign(name: string): Promise<Campaign> {
   await db.campaigns.add(campaign)
 
   return campaign
-}export async function getActiveSession(campaignId: string) {
+}
+
+export async function getActiveSession(
+  campaignId: string
+) {
   return db.sessions
     .where('campaignId')
     .equals(campaignId)
-    .filter((session) => session.status === 'active')
+    .filter(
+      (session) =>
+        session.status === 'active'
+    )
     .first()
 }
 
-export async function startSession(campaignId: string) {
+export async function startSession(
+  campaignId: string
+) {
   return db.transaction(
     'rw',
     db.sessions,
@@ -86,7 +99,9 @@ export async function startSession(campaignId: string) {
       return session
     }
   )
-}export async function createQuickNote(
+}
+
+export async function createQuickNote(
   campaignId: string,
   sessionId: string,
   text: string
@@ -94,10 +109,13 @@ export async function startSession(campaignId: string) {
   const trimmedText = text.trim()
 
   if (!trimmedText) {
-    throw new Error('Quick Note text is required.')
+    throw new Error(
+      'Quick Note text is required.'
+    )
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
   const quickNote = {
     id: crypto.randomUUID(),
@@ -121,18 +139,26 @@ export async function getQuickNotesForSession(
     .where('sessionId')
     .equals(sessionId)
     .sortBy('capturedAt')
-}export async function endSession(sessionId: string) {
-  const session = await db.sessions.get(sessionId)
+}
+
+export async function endSession(
+  sessionId: string
+) {
+  const session =
+    await db.sessions.get(sessionId)
 
   if (!session) {
     throw new Error('Session not found.')
   }
 
   if (session.status !== 'active') {
-    throw new Error('Only an active session can be ended.')
+    throw new Error(
+      'Only an active session can be ended.'
+    )
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
   await db.sessions.update(sessionId, {
     status: 'awaiting_review',
@@ -143,23 +169,33 @@ export async function getQuickNotesForSession(
   return db.sessions.get(sessionId)
 }
 
-export async function getOpenReviews(campaignId: string) {
-  const sessions = await db.sessions
-    .where('campaignId')
-    .equals(campaignId)
-    .filter(
-      (session) =>
-        session.status === 'awaiting_review' ||
-        session.status === 'reviewing'
-    )
-    .toArray()
+export async function getOpenReviews(
+  campaignId: string
+) {
+  const sessions =
+    await db.sessions
+      .where('campaignId')
+      .equals(campaignId)
+      .filter(
+        (session) =>
+          session.status ===
+            'awaiting_review' ||
+          session.status === 'reviewing'
+      )
+      .toArray()
 
   return sessions.sort(
     (a, b) =>
-      new Date(a.endedAt ?? a.createdAt).getTime() -
-      new Date(b.endedAt ?? b.createdAt).getTime()
+      new Date(
+        a.endedAt ?? a.createdAt
+      ).getTime() -
+      new Date(
+        b.endedAt ?? b.createdAt
+      ).getTime()
   )
-}export async function getReviewDraftForSession(
+}
+
+export async function getReviewDraftForSession(
   sessionId: string
 ) {
   return db.reviewDrafts
@@ -187,14 +223,18 @@ export async function startOrResumeReview(
     db.reviewDrafts,
     db.reviewItems,
     async () => {
-      const session = await db.sessions.get(sessionId)
+      const session =
+        await db.sessions.get(sessionId)
 
       if (!session) {
-        throw new Error('Session not found.')
+        throw new Error(
+          'Session not found.'
+        )
       }
 
       if (
-        session.status !== 'awaiting_review' &&
+        session.status !==
+          'awaiting_review' &&
         session.status !== 'reviewing'
       ) {
         throw new Error(
@@ -203,40 +243,58 @@ export async function startOrResumeReview(
       }
 
       let reviewDraft =
-        await getReviewDraftForSession(sessionId)
+        await getReviewDraftForSession(
+          sessionId
+        )
 
       if (!reviewDraft) {
-        const timestamp = new Date().toISOString()
+        const timestamp =
+          new Date().toISOString()
 
         const quickNotes =
-          await getQuickNotesForSession(sessionId)
+          await getQuickNotesForSession(
+            sessionId
+          )
 
         reviewDraft = {
           id: crypto.randomUUID(),
-          campaignId: session.campaignId,
+          campaignId:
+            session.campaignId,
           sessionId: session.id,
-          status: 'in_progress' as const,
-          currentReviewItemId: undefined,
+          status:
+            'in_progress' as const,
+          currentReviewItemId:
+            undefined,
           createdAt: timestamp,
           updatedAt: timestamp,
         }
 
-        await db.reviewDrafts.add(reviewDraft)
-
-        const reviewItems = quickNotes.map(
-          (quickNote) => ({
-            id: crypto.randomUUID(),
-            reviewDraftId: reviewDraft!.id,
-            quickNoteId: quickNote.id,
-            workingText: quickNote.text,
-            isDiscarded: false,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          })
+        await db.reviewDrafts.add(
+          reviewDraft
         )
 
-        if (reviewItems.length > 0) {
-          await db.reviewItems.bulkAdd(reviewItems)
+        const reviewItems =
+          quickNotes.map(
+            (quickNote) => ({
+              id: crypto.randomUUID(),
+              reviewDraftId:
+                reviewDraft!.id,
+              quickNoteId:
+                quickNote.id,
+              workingText:
+                quickNote.text,
+              isDiscarded: false,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            })
+          )
+
+        if (
+          reviewItems.length > 0
+        ) {
+          await db.reviewItems.bulkAdd(
+            reviewItems
+          )
 
           reviewDraft.currentReviewItemId =
             reviewItems[0].id
@@ -251,14 +309,19 @@ export async function startOrResumeReview(
           )
         }
 
-        await db.sessions.update(session.id, {
-          status: 'reviewing',
-          updatedAt: timestamp,
-        })
+        await db.sessions.update(
+          session.id,
+          {
+            status: 'reviewing',
+            updatedAt: timestamp,
+          }
+        )
       }
 
       const reviewItems =
-        await getReviewItems(reviewDraft.id)
+        await getReviewItems(
+          reviewDraft.id
+        )
 
       return {
         reviewDraft,
@@ -266,25 +329,37 @@ export async function startOrResumeReview(
       }
     }
   )
-}export async function updateReviewItemText(
+}
+
+export async function updateReviewItemText(
   reviewItemId: string,
   workingText: string
 ) {
   const reviewItem =
-    await db.reviewItems.get(reviewItemId)
+    await db.reviewItems.get(
+      reviewItemId
+    )
 
   if (!reviewItem) {
-    throw new Error('Review item not found.')
+    throw new Error(
+      'Review item not found.'
+    )
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
-  await db.reviewItems.update(reviewItemId, {
-    workingText,
-    updatedAt: timestamp,
-  })
+  await db.reviewItems.update(
+    reviewItemId,
+    {
+      workingText,
+      updatedAt: timestamp,
+    }
+  )
 
-  return db.reviewItems.get(reviewItemId)
+  return db.reviewItems.get(
+    reviewItemId
+  )
 }
 
 export async function setCurrentReviewItem(
@@ -292,32 +367,50 @@ export async function setCurrentReviewItem(
   reviewItemId: string
 ) {
   const reviewDraft =
-    await db.reviewDrafts.get(reviewDraftId)
+    await db.reviewDrafts.get(
+      reviewDraftId
+    )
 
   if (!reviewDraft) {
-    throw new Error('Review draft not found.')
+    throw new Error(
+      'Review draft not found.'
+    )
   }
 
   const reviewItem =
-    await db.reviewItems.get(reviewItemId)
+    await db.reviewItems.get(
+      reviewItemId
+    )
 
   if (!reviewItem) {
-    throw new Error('Review item not found.')
+    throw new Error(
+      'Review item not found.'
+    )
   }
 
-  if (reviewItem.reviewDraftId !== reviewDraftId) {
+  if (
+    reviewItem.reviewDraftId !==
+    reviewDraftId
+  ) {
     throw new Error(
       'Review item does not belong to this review.'
     )
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
-  await db.reviewDrafts.update(reviewDraftId, {
-    currentReviewItemId: reviewItemId,
-    updatedAt: timestamp,
-  })
-}export async function getReviewDestinations(
+  await db.reviewDrafts.update(
+    reviewDraftId,
+    {
+      currentReviewItemId:
+        reviewItemId,
+      updatedAt: timestamp,
+    }
+  )
+}
+
+export async function getReviewDestinations(
   reviewItemId: string
 ) {
   return db.reviewDestinations
@@ -336,7 +429,8 @@ export async function addJournalDestination(
       .equals(reviewItemId)
       .filter(
         (destination) =>
-          destination.destinationType === 'journal'
+          destination.destinationType ===
+          'journal'
       )
       .first()
 
@@ -344,19 +438,23 @@ export async function addJournalDestination(
     return existing
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
   const destination = {
     id: crypto.randomUUID(),
     reviewItemId,
-    destinationType: 'journal' as const,
+    destinationType:
+      'journal' as const,
     targetId: undefined,
     text: initialText,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
 
-  await db.reviewDestinations.add(destination)
+  await db.reviewDestinations.add(
+    destination
+  )
 
   return destination
 }
@@ -366,7 +464,9 @@ export async function updateReviewDestinationText(
   text: string
 ) {
   const destination =
-    await db.reviewDestinations.get(destinationId)
+    await db.reviewDestinations.get(
+      destinationId
+    )
 
   if (!destination) {
     throw new Error(
@@ -374,7 +474,8 @@ export async function updateReviewDestinationText(
     )
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
   await db.reviewDestinations.update(
     destinationId,
@@ -384,37 +485,57 @@ export async function updateReviewDestinationText(
     }
   )
 
-  return db.reviewDestinations.get(destinationId)
+  return db.reviewDestinations.get(
+    destinationId
+  )
 }
 
 export async function removeReviewDestination(
   destinationId: string
 ) {
   const destination =
-    await db.reviewDestinations.get(destinationId)
+    await db.reviewDestinations.get(
+      destinationId
+    )
 
   if (!destination) {
     return
   }
 
-  await db.reviewDestinations.delete(destinationId)
-}export async function createPerson(
+  await db.reviewDestinations.delete(
+    destinationId
+  )
+}
+
+/*
+ * PERMANENT PEOPLE
+ */
+
+export async function createPerson(
   campaignId: string,
   name: string
 ) {
   const trimmedName = name.trim()
 
   if (!trimmedName) {
-    throw new Error('Person name is required.')
+    throw new Error(
+      'Person name is required.'
+    )
   }
 
-  const campaign = await db.campaigns.get(campaignId)
+  const campaign =
+    await db.campaigns.get(
+      campaignId
+    )
 
   if (!campaign) {
-    throw new Error('Campaign not found.')
+    throw new Error(
+      'Campaign not found.'
+    )
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
   const person = {
     id: crypto.randomUUID(),
@@ -444,23 +565,31 @@ export async function getPerson(
   personId: string
 ) {
   return db.people.get(personId)
-}export async function addPersonDestination(
+}
+
+export async function addPersonDestination(
   reviewItemId: string,
   personId: string,
   initialText: string
 ) {
   const reviewItem =
-    await db.reviewItems.get(reviewItemId)
+    await db.reviewItems.get(
+      reviewItemId
+    )
 
   if (!reviewItem) {
-    throw new Error('Review item not found.')
+    throw new Error(
+      'Review item not found.'
+    )
   }
 
   const person =
     await db.people.get(personId)
 
   if (!person) {
-    throw new Error('Person not found.')
+    throw new Error(
+      'Person not found.'
+    )
   }
 
   const existing =
@@ -469,8 +598,10 @@ export async function getPerson(
       .equals(reviewItemId)
       .filter(
         (destination) =>
-          destination.destinationType === 'person' &&
-          destination.targetId === personId
+          destination.destinationType ===
+            'person' &&
+          destination.targetId ===
+            personId
       )
       .first()
 
@@ -478,58 +609,199 @@ export async function getPerson(
     return existing
   }
 
-  const timestamp = new Date().toISOString()
+  const timestamp =
+    new Date().toISOString()
 
   const destination = {
     id: crypto.randomUUID(),
     reviewItemId,
-    destinationType: 'person' as const,
+    destinationType:
+      'person' as const,
     targetId: personId,
     text: initialText,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
 
-  await db.reviewDestinations.add(destination)
+  await db.reviewDestinations.add(
+    destination
+  )
 
   return destination
 }
 
-export async function createPersonAndDestination(
-  campaignId: string,
+/*
+ * REVIEW-DRAFT PEOPLE
+ */
+
+export async function getReviewDraftPeople(
+  reviewDraftId: string
+) {
+  return db.reviewDraftPeople
+    .where('reviewDraftId')
+    .equals(reviewDraftId)
+    .sortBy('name')
+}
+
+export async function addReviewDraftPersonDestination(
   reviewItemId: string,
-  personName: string,
+  draftPersonId: string,
   initialText: string
 ) {
+  const reviewItem =
+    await db.reviewItems.get(
+      reviewItemId
+    )
+
+  if (!reviewItem) {
+    throw new Error(
+      'Review item not found.'
+    )
+  }
+
+  const draftPerson =
+    await db.reviewDraftPeople.get(
+      draftPersonId
+    )
+
+  if (!draftPerson) {
+    throw new Error(
+      'Review draft Person not found.'
+    )
+  }
+
+  if (
+    draftPerson.reviewDraftId !==
+    reviewItem.reviewDraftId
+  ) {
+    throw new Error(
+      'Draft Person belongs to another Review.'
+    )
+  }
+
+  const existing =
+    await db.reviewDestinations
+      .where('reviewItemId')
+      .equals(reviewItemId)
+      .filter(
+        (destination) =>
+          destination.destinationType ===
+            'person' &&
+          destination.targetId ===
+            draftPersonId
+      )
+      .first()
+
+  if (existing) {
+    return existing
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const destination = {
+    id: crypto.randomUUID(),
+    reviewItemId,
+    destinationType:
+      'person' as const,
+    targetId: draftPersonId,
+    text: initialText,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.reviewDestinations.add(
+    destination
+  )
+
+  return destination
+}
+
+export async function createReviewDraftPersonAndDestination(
+  reviewDraftId: string,
+  reviewItemId: string,
+  name: string,
+  initialText: string
+) {
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    throw new Error(
+      'Person name is required.'
+    )
+  }
+
   return db.transaction(
     'rw',
-    db.campaigns,
-    db.people,
+    db.reviewDrafts,
     db.reviewItems,
+    db.reviewDraftPeople,
     db.reviewDestinations,
     async () => {
-      const reviewItem =
-        await db.reviewItems.get(reviewItemId)
+      const reviewDraft =
+        await db.reviewDrafts.get(
+          reviewDraftId
+        )
 
-      if (!reviewItem) {
-        throw new Error('Review item not found.')
+      if (!reviewDraft) {
+        throw new Error(
+          'Review draft not found.'
+        )
       }
 
-      const person =
-        await createPerson(
-          campaignId,
-          personName
+      const reviewItem =
+        await db.reviewItems.get(
+          reviewItemId
         )
 
-      const destination =
-        await addPersonDestination(
-          reviewItemId,
-          person.id,
-          initialText
+      if (!reviewItem) {
+        throw new Error(
+          'Review item not found.'
         )
+      }
+
+      if (
+        reviewItem.reviewDraftId !==
+        reviewDraft.id
+      ) {
+        throw new Error(
+          'Review item does not belong to this Review.'
+        )
+      }
+
+      const timestamp =
+        new Date().toISOString()
+
+      const draftPerson = {
+        id: crypto.randomUUID(),
+        reviewDraftId,
+        name: trimmedName,
+        role: undefined,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+
+      await db.reviewDraftPeople.add(
+        draftPerson
+      )
+
+      const destination = {
+        id: crypto.randomUUID(),
+        reviewItemId,
+        destinationType:
+          'person' as const,
+        targetId: draftPerson.id,
+        text: initialText,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+
+      await db.reviewDestinations.add(
+        destination
+      )
 
       return {
-        person,
+        draftPerson,
         destination,
       }
     }
