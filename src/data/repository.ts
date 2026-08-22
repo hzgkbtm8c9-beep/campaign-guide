@@ -806,4 +806,425 @@ export async function createReviewDraftPersonAndDestination(
       }
     }
   )
+}/*
+ * DISCOVERY CATEGORIES
+ */
+
+const DEFAULT_DISCOVERY_CATEGORIES = [
+  'Location',
+  'Item',
+  'Group',
+  'Creature',
+  'Clue',
+] as const
+
+export async function ensureDefaultDiscoveryCategories(
+  campaignId: string
+) {
+  const existingCategories =
+    await db.discoveryCategories
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray()
+
+  if (existingCategories.length > 0) {
+    return existingCategories.sort(
+      (a, b) =>
+        a.sortPosition - b.sortPosition
+    )
+  }
+
+  const campaign =
+    await db.campaigns.get(campaignId)
+
+  if (!campaign) {
+    throw new Error(
+      'Campaign not found.'
+    )
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const categories =
+    DEFAULT_DISCOVERY_CATEGORIES.map(
+      (name, index) => ({
+        id: crypto.randomUUID(),
+        campaignId,
+        name,
+        sortPosition: index,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+    )
+
+  await db.discoveryCategories.bulkAdd(
+    categories
+  )
+
+  return categories
+}
+
+export async function getDiscoveryCategories(
+  campaignId: string
+) {
+  const categories =
+    await ensureDefaultDiscoveryCategories(
+      campaignId
+    )
+
+  return categories.sort(
+    (a, b) =>
+      a.sortPosition - b.sortPosition
+  )
+}
+
+/*
+ * DISCOVERIES
+ */
+
+export async function getDiscoveries(
+  campaignId: string
+) {
+  return db.discoveries
+    .where('campaignId')
+    .equals(campaignId)
+    .sortBy('title')
+}
+
+export async function getDiscovery(
+  discoveryId: string
+) {
+  return db.discoveries.get(
+    discoveryId
+  )
+}
+
+export async function getReviewDraftCategories(
+  reviewDraftId: string
+) {
+  return db.reviewDraftCategories
+    .where('reviewDraftId')
+    .equals(reviewDraftId)
+    .sortBy('name')
+}
+
+export async function getReviewDraftDiscoveries(
+  reviewDraftId: string
+) {
+  return db.reviewDraftDiscoveries
+    .where('reviewDraftId')
+    .equals(reviewDraftId)
+    .sortBy('title')
+}
+
+export async function addDiscoveryDestination(
+  reviewItemId: string,
+  discoveryId: string,
+  initialText: string
+) {
+  const reviewItem =
+    await db.reviewItems.get(
+      reviewItemId
+    )
+
+  if (!reviewItem) {
+    throw new Error(
+      'Review item not found.'
+    )
+  }
+
+  const discovery =
+    await db.discoveries.get(
+      discoveryId
+    )
+
+  if (!discovery) {
+    throw new Error(
+      'Discovery not found.'
+    )
+  }
+
+  const existing =
+    await db.reviewDestinations
+      .where('reviewItemId')
+      .equals(reviewItemId)
+      .filter(
+        (destination) =>
+          destination.destinationType ===
+            'discovery' &&
+          destination.targetId ===
+            discoveryId
+      )
+      .first()
+
+  if (existing) {
+    return existing
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const destination = {
+    id: crypto.randomUUID(),
+    reviewItemId,
+    destinationType:
+      'discovery' as const,
+    targetId: discoveryId,
+    text: initialText,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.reviewDestinations.add(
+    destination
+  )
+
+  return destination
+}
+
+export async function addReviewDraftDiscoveryDestination(
+  reviewItemId: string,
+  draftDiscoveryId: string,
+  initialText: string
+) {
+  const reviewItem =
+    await db.reviewItems.get(
+      reviewItemId
+    )
+
+  if (!reviewItem) {
+    throw new Error(
+      'Review item not found.'
+    )
+  }
+
+  const draftDiscovery =
+    await db.reviewDraftDiscoveries.get(
+      draftDiscoveryId
+    )
+
+  if (!draftDiscovery) {
+    throw new Error(
+      'Review draft Discovery not found.'
+    )
+  }
+
+  if (
+    draftDiscovery.reviewDraftId !==
+    reviewItem.reviewDraftId
+  ) {
+    throw new Error(
+      'Draft Discovery belongs to another Review.'
+    )
+  }
+
+  const existing =
+    await db.reviewDestinations
+      .where('reviewItemId')
+      .equals(reviewItemId)
+      .filter(
+        (destination) =>
+          destination.destinationType ===
+            'discovery' &&
+          destination.targetId ===
+            draftDiscoveryId
+      )
+      .first()
+
+  if (existing) {
+    return existing
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const destination = {
+    id: crypto.randomUUID(),
+    reviewItemId,
+    destinationType:
+      'discovery' as const,
+    targetId: draftDiscoveryId,
+    text: initialText,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.reviewDestinations.add(
+    destination
+  )
+
+  return destination
+}
+
+export async function createReviewDraftCategory(
+  reviewDraftId: string,
+  name: string
+) {
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    throw new Error(
+      'Category name is required.'
+    )
+  }
+
+  const reviewDraft =
+    await db.reviewDrafts.get(
+      reviewDraftId
+    )
+
+  if (!reviewDraft) {
+    throw new Error(
+      'Review draft not found.'
+    )
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const draftCategory = {
+    id: crypto.randomUUID(),
+    reviewDraftId,
+    name: trimmedName,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.reviewDraftCategories.add(
+    draftCategory
+  )
+
+  return draftCategory
+}
+
+export async function createReviewDraftDiscoveryAndDestination(
+  reviewDraftId: string,
+  reviewItemId: string,
+  title: string,
+  categoryRef: string,
+  initialText: string
+) {
+  const trimmedTitle =
+    title.trim()
+
+  if (!trimmedTitle) {
+    throw new Error(
+      'Discovery title is required.'
+    )
+  }
+
+  if (!categoryRef) {
+    throw new Error(
+      'Discovery category is required.'
+    )
+  }
+
+  return db.transaction(
+  'rw',
+  [
+    db.reviewDrafts,
+    db.reviewItems,
+    db.discoveryCategories,
+    db.reviewDraftCategories,
+    db.reviewDraftDiscoveries,
+    db.reviewDestinations,
+  ],
+  async () => {
+      const reviewDraft =
+        await db.reviewDrafts.get(
+          reviewDraftId
+        )
+
+      if (!reviewDraft) {
+        throw new Error(
+          'Review draft not found.'
+        )
+      }
+
+      const reviewItem =
+        await db.reviewItems.get(
+          reviewItemId
+        )
+
+      if (!reviewItem) {
+        throw new Error(
+          'Review item not found.'
+        )
+      }
+
+      if (
+        reviewItem.reviewDraftId !==
+        reviewDraft.id
+      ) {
+        throw new Error(
+          'Review item does not belong to this Review.'
+        )
+      }
+
+      const permanentCategory =
+        await db.discoveryCategories.get(
+          categoryRef
+        )
+
+      const draftCategory =
+        await db.reviewDraftCategories.get(
+          categoryRef
+        )
+
+      const validPermanentCategory =
+        permanentCategory?.campaignId ===
+        reviewDraft.campaignId
+
+      const validDraftCategory =
+        draftCategory?.reviewDraftId ===
+        reviewDraft.id
+
+      if (
+        !validPermanentCategory &&
+        !validDraftCategory
+      ) {
+        throw new Error(
+          'Discovery category is invalid.'
+        )
+      }
+
+      const timestamp =
+        new Date().toISOString()
+
+      const draftDiscovery = {
+        id: crypto.randomUUID(),
+        reviewDraftId,
+        title: trimmedTitle,
+        categoryRef,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+
+      await db.reviewDraftDiscoveries.add(
+        draftDiscovery
+      )
+
+      const destination = {
+        id: crypto.randomUUID(),
+        reviewItemId,
+        destinationType:
+          'discovery' as const,
+        targetId:
+          draftDiscovery.id,
+        text: initialText,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }
+
+      await db.reviewDestinations.add(
+        destination
+      )
+
+      return {
+        draftDiscovery,
+        destination,
+      }
+    }
+  )
 }

@@ -2,19 +2,27 @@ import { useEffect, useState } from 'react'
 import './App.css'
 
 import {
+  addDiscoveryDestination,
   addJournalDestination,
   addPersonDestination,
+  addReviewDraftDiscoveryDestination,
   addReviewDraftPersonDestination,
   createCampaign,
   createQuickNote,
+  createReviewDraftCategory,
+  createReviewDraftDiscoveryAndDestination,
   createReviewDraftPersonAndDestination,
   endSession,
   getActiveSession,
   getCampaign,
+  getDiscoveries,
+  getDiscoveryCategories,
   getOpenReviews,
   getPeople,
   getQuickNotesForSession,
   getReviewDestinations,
+  getReviewDraftCategories,
+  getReviewDraftDiscoveries,
   getReviewDraftPeople,
   removeReviewDestination,
   setCurrentReviewItem,
@@ -26,10 +34,14 @@ import {
 
 import type {
   Campaign,
+  Discovery,
+  DiscoveryCategory,
   Person,
   QuickNote,
   ReviewDestination,
   ReviewDraft,
+  ReviewDraftCategory,
+  ReviewDraftDiscovery,
   ReviewDraftPerson,
   ReviewItem,
   Session,
@@ -180,6 +192,22 @@ function ReviewScreen({
   const [draftPeople, setDraftPeople] =
     useState<ReviewDraftPerson[]>([])
 
+  const [categories, setCategories] =
+    useState<DiscoveryCategory[]>([])
+
+  const [
+    draftCategories,
+    setDraftCategories,
+  ] = useState<ReviewDraftCategory[]>([])
+
+  const [discoveries, setDiscoveries] =
+    useState<Discovery[]>([])
+
+  const [
+    draftDiscoveries,
+    setDraftDiscoveries,
+  ] = useState<ReviewDraftDiscovery[]>([])
+
   const [
     isLoadingDestinations,
     setIsLoadingDestinations,
@@ -198,6 +226,31 @@ function ReviewScreen({
   const [
     personError,
     setPersonError,
+  ] = useState('')
+
+  const [
+    showDiscoveryPicker,
+    setShowDiscoveryPicker,
+  ] = useState(false)
+
+  const [
+    newDiscoveryTitle,
+    setNewDiscoveryTitle,
+  ] = useState('')
+
+  const [
+    selectedCategoryRef,
+    setSelectedCategoryRef,
+  ] = useState('')
+
+  const [
+    newCategoryName,
+    setNewCategoryName,
+  ] = useState('')
+
+  const [
+    discoveryError,
+    setDiscoveryError,
   ] = useState('')
 
   const currentItem =
@@ -224,23 +277,59 @@ function ReviewScreen({
         'person'
     )
 
-  useEffect(() => {
-    async function loadPeople() {
-      const permanentPeople =
-        await getPeople(
-          session.campaignId
-        )
+  const discoveryDestinations =
+    destinations.filter(
+      (destination) =>
+        destination.destinationType ===
+        'discovery'
+    )
 
-      const temporaryPeople =
-        await getReviewDraftPeople(
+  useEffect(() => {
+    async function loadReferenceData() {
+      const [
+        permanentPeople,
+        temporaryPeople,
+        permanentCategories,
+        temporaryCategories,
+        permanentDiscoveries,
+        temporaryDiscoveries,
+      ] = await Promise.all([
+        getPeople(session.campaignId),
+        getReviewDraftPeople(reviewDraft.id),
+        getDiscoveryCategories(
+          session.campaignId
+        ),
+        getReviewDraftCategories(
           reviewDraft.id
-        )
+        ),
+        getDiscoveries(session.campaignId),
+        getReviewDraftDiscoveries(
+          reviewDraft.id
+        ),
+      ])
 
       setPeople(permanentPeople)
       setDraftPeople(temporaryPeople)
+
+      setCategories(permanentCategories)
+      setDraftCategories(temporaryCategories)
+
+      setDiscoveries(permanentDiscoveries)
+      setDraftDiscoveries(
+        temporaryDiscoveries
+      )
+
+      if (
+        !selectedCategoryRef &&
+        permanentCategories.length > 0
+      ) {
+        setSelectedCategoryRef(
+          permanentCategories[0].id
+        )
+      }
     }
 
-    void loadPeople()
+    void loadReferenceData()
   }, [
     session.campaignId,
     reviewDraft.id,
@@ -360,44 +449,107 @@ function ReviewScreen({
     )
   }
 
-  function getPermanentPerson(
-    destination: ReviewDestination
+  function getCategoryName(
+    categoryRef: string
   ) {
-    return people.find(
-      (person) =>
-        person.id ===
-        destination.targetId
-    )
-  }
+    const permanentCategory =
+      categories.find(
+        (category) =>
+          category.id === categoryRef
+      )
 
-  function getDraftPerson(
-    destination: ReviewDestination
-  ) {
-    return draftPeople.find(
-      (person) =>
-        person.id ===
-        destination.targetId
-    )
+    if (permanentCategory) {
+      return permanentCategory.name
+    }
+
+    const draftCategory =
+      draftCategories.find(
+        (category) =>
+          category.id === categoryRef
+      )
+
+    if (draftCategory) {
+      return `${draftCategory.name} — New`
+    }
+
+    return 'Unknown Category'
   }
 
   function getPersonLabel(
     destination: ReviewDestination
   ) {
     const permanentPerson =
-      getPermanentPerson(destination)
+      people.find(
+        (person) =>
+          person.id ===
+          destination.targetId
+      )
 
     if (permanentPerson) {
       return permanentPerson.name
     }
 
     const draftPerson =
-      getDraftPerson(destination)
+      draftPeople.find(
+        (person) =>
+          person.id ===
+          destination.targetId
+      )
 
     if (draftPerson) {
       return `${draftPerson.name} — New`
     }
 
     return 'Unavailable Person'
+  }
+
+  function getDiscoveryLabel(
+    destination: ReviewDestination
+  ) {
+    const permanentDiscovery =
+      discoveries.find(
+        (discovery) =>
+          discovery.id ===
+          destination.targetId
+      )
+
+    if (permanentDiscovery) {
+      return `${permanentDiscovery.title} — ${getCategoryName(
+        permanentDiscovery.categoryId
+      )}`
+    }
+
+    const draftDiscovery =
+      draftDiscoveries.find(
+        (discovery) =>
+          discovery.id ===
+          destination.targetId
+      )
+
+    if (draftDiscovery) {
+  const permanentCategory =
+    categories.find(
+      (category) =>
+        category.id ===
+        draftDiscovery.categoryRef
+    )
+
+  const draftCategory =
+    draftCategories.find(
+      (category) =>
+        category.id ===
+        draftDiscovery.categoryRef
+    )
+
+  const categoryName =
+    permanentCategory?.name ??
+    draftCategory?.name ??
+    'Unknown Category'
+
+  return `${draftDiscovery.title} — ${categoryName} — New`
+}
+
+    return 'Unavailable Discovery'
   }
 
   async function handleAddJournal() {
@@ -573,6 +725,202 @@ function ReviewScreen({
     }
   }
 
+  async function handleAddPermanentDiscovery(
+    discovery: Discovery
+  ) {
+    if (!currentItem) {
+      return
+    }
+
+    setDiscoveryError('')
+
+    try {
+      const destination =
+        await addDiscoveryDestination(
+          currentItem.id,
+          discovery.id,
+          currentItem.workingText
+        )
+
+      setDestinations((current) => {
+        const alreadyExists =
+          current.some(
+            (item) =>
+              item.id ===
+              destination.id
+          )
+
+        if (alreadyExists) {
+          return current
+        }
+
+        return [
+          ...current,
+          destination,
+        ]
+      })
+
+      setShowDiscoveryPicker(false)
+    } catch (error) {
+      console.error(error)
+
+      setDiscoveryError(
+        'Discovery destination could not be added.'
+      )
+    }
+  }
+
+  async function handleAddDraftDiscovery(
+    draftDiscovery: ReviewDraftDiscovery
+  ) {
+    if (!currentItem) {
+      return
+    }
+
+    setDiscoveryError('')
+
+    try {
+      const destination =
+        await addReviewDraftDiscoveryDestination(
+          currentItem.id,
+          draftDiscovery.id,
+          currentItem.workingText
+        )
+
+      setDestinations((current) => {
+        const alreadyExists =
+          current.some(
+            (item) =>
+              item.id ===
+              destination.id
+          )
+
+        if (alreadyExists) {
+          return current
+        }
+
+        return [
+          ...current,
+          destination,
+        ]
+      })
+
+      setShowDiscoveryPicker(false)
+    } catch (error) {
+      console.error(error)
+
+      setDiscoveryError(
+        'Draft Discovery destination could not be added.'
+      )
+    }
+  }
+
+  async function handleCreateDraftCategory() {
+    const trimmedName =
+      newCategoryName.trim()
+
+    if (!trimmedName) {
+      setDiscoveryError(
+        'Category name is required.'
+      )
+      return
+    }
+
+    setDiscoveryError('')
+
+    try {
+      const category =
+        await createReviewDraftCategory(
+          reviewDraft.id,
+          trimmedName
+        )
+
+      setDraftCategories((current) =>
+        [
+          ...current,
+          category,
+        ].sort((a, b) =>
+          a.name.localeCompare(
+            b.name
+          )
+        )
+      )
+
+      setSelectedCategoryRef(
+        category.id
+      )
+
+      setNewCategoryName('')
+    } catch (error) {
+      console.error(error)
+
+      setDiscoveryError(
+        'Category could not be created.'
+      )
+    }
+  }
+
+  async function handleCreateDraftDiscovery() {
+    if (!currentItem) {
+      return
+    }
+
+    const trimmedTitle =
+      newDiscoveryTitle.trim()
+
+    if (!trimmedTitle) {
+      setDiscoveryError(
+        'Discovery title is required.'
+      )
+      return
+    }
+
+    if (!selectedCategoryRef) {
+      setDiscoveryError(
+        'Discovery category is required.'
+      )
+      return
+    }
+
+    setDiscoveryError('')
+
+    try {
+      const result =
+        await createReviewDraftDiscoveryAndDestination(
+          reviewDraft.id,
+          currentItem.id,
+          trimmedTitle,
+          selectedCategoryRef,
+          currentItem.workingText
+        )
+
+      setDraftDiscoveries((current) =>
+        [
+          ...current,
+          result.draftDiscovery,
+        ].sort((a, b) =>
+          a.title.localeCompare(
+            b.title
+          )
+        )
+      )
+
+      setDestinations((current) => [
+        ...current,
+        result.destination,
+      ])
+
+      setNewDiscoveryTitle('')
+      setShowDiscoveryPicker(false)
+    } catch (error) {
+      console.error(error)
+
+      setDiscoveryError(
+        'Draft Discovery could not be created.'
+      )
+    }
+  }
+
   async function handleRemoveDestination(
     destinationId: string
   ) {
@@ -631,8 +979,14 @@ function ReviewScreen({
     )
 
     setShowPersonPicker(false)
+    setShowDiscoveryPicker(false)
+
     setPersonError('')
+    setDiscoveryError('')
+
     setNewPersonName('')
+    setNewDiscoveryTitle('')
+    setNewCategoryName('')
 
     setCurrentIndex(nextIndex)
   }
@@ -837,9 +1191,8 @@ function ReviewScreen({
                       />
 
                       <p className="review-help">
-                        This Person
-                        contribution is
-                        independent from
+                        This Person contribution
+                        is independent from
                         Working Text.
                       </p>
                     </div>
@@ -983,8 +1336,321 @@ function ReviewScreen({
                         setShowPersonPicker(
                           false
                         )
+
                         setPersonError('')
                         setNewPersonName('')
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="discovery-destinations">
+                <h3>Discoveries</h3>
+
+                {discoveryDestinations.map(
+                  (destination) => (
+                    <div
+                      className="destination-card"
+                      key={destination.id}
+                    >
+                      <div className="destination-heading">
+                        <strong>
+                          {getDiscoveryLabel(
+                            destination
+                          )}
+                        </strong>
+
+                        <button
+                          className="destination-remove"
+                          onClick={() =>
+                            void handleRemoveDestination(
+                              destination.id
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <textarea
+                        value={
+                          destination.text
+                        }
+                        onChange={(event) =>
+                          handleDestinationTextChange(
+                            destination.id,
+                            event.target.value
+                          )
+                        }
+                      />
+
+                      <p className="review-help">
+                        This Discovery
+                        contribution is
+                        independent from
+                        Working Text.
+                      </p>
+                    </div>
+                  )
+                )}
+
+                {!showDiscoveryPicker ? (
+                  <button
+                    className="destination-add"
+                    onClick={() =>
+                      setShowDiscoveryPicker(
+                        true
+                      )
+                    }
+                  >
+                    + Add to Discovery
+                  </button>
+                ) : (
+                  <div className="discovery-picker">
+                    <h4>
+                      Choose Discovery
+                    </h4>
+
+                    {discoveries.length >
+                      0 && (
+                      <>
+                        <p className="review-help">
+                          Existing Discoveries
+                        </p>
+
+                        <div className="person-picker-list">
+                          {discoveries.map(
+                            (discovery) => (
+                              <button
+                                key={
+                                  discovery.id
+                                }
+                                className="person-picker-item"
+                                onClick={() =>
+                                  void handleAddPermanentDiscovery(
+                                    discovery
+                                  )
+                                }
+                              >
+                                {
+                                  discovery.title
+                                }{' '}
+                                —{' '}
+                                {getCategoryName(
+                                  discovery.categoryId
+                                )}
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {draftDiscoveries.length >
+                      0 && (
+                      <>
+                        <p className="review-help">
+                          New in this Review
+                        </p>
+
+                        <div className="person-picker-list">
+                          {draftDiscoveries.map(
+                            (
+                              discovery
+                            ) => (
+                              <button
+                                key={
+                                  discovery.id
+                                }
+                                className="person-picker-item"
+                                onClick={() =>
+                                  void handleAddDraftDiscovery(
+                                    discovery
+                                  )
+                                }
+                              >
+                                {(() => {
+                                  const permanentCategory =
+                                    categories.find(
+                                      (category) =>
+                                        category.id ===
+                                        discovery.categoryRef
+                                    )
+
+                                  const draftCategory =
+                                    draftCategories.find(
+                                      (category) =>
+                                        category.id ===
+                                        discovery.categoryRef
+                                    )
+
+                                  const categoryName =
+                                    permanentCategory?.name ??
+                                    draftCategory?.name ??
+                                    'Unknown Category'
+
+                                  return `${discovery.title} — ${categoryName} — New`
+                                })()}
+                              </button>
+                            )
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {discoveries.length ===
+                      0 &&
+                      draftDiscoveries.length ===
+                        0 && (
+                        <p className="review-help">
+                          No Discoveries exist
+                          yet.
+                        </p>
+                      )}
+
+                    <div className="new-discovery-box">
+                      <h4>
+                        Create New Discovery
+                      </h4>
+
+                      <label htmlFor="new-discovery-title">
+                        Title
+                      </label>
+
+                      <input
+                        id="new-discovery-title"
+                        value={
+                          newDiscoveryTitle
+                        }
+                        onChange={(event) =>
+                          setNewDiscoveryTitle(
+                            event.target.value
+                          )
+                        }
+                        placeholder="Discovery title"
+                      />
+
+                      <label htmlFor="discovery-category">
+                        Category
+                      </label>
+
+                      <select
+                        id="discovery-category"
+                        value={
+                          selectedCategoryRef
+                        }
+                        onChange={(event) =>
+                          setSelectedCategoryRef(
+                            event.target.value
+                          )
+                        }
+                      >
+                        {categories.map(
+                          (category) => (
+                            <option
+                              key={
+                                category.id
+                              }
+                              value={
+                                category.id
+                              }
+                            >
+                              {
+                                category.name
+                              }
+                            </option>
+                          )
+                        )}
+
+                        {draftCategories.map(
+                          (category) => (
+                            <option
+                              key={
+                                category.id
+                              }
+                              value={
+                                category.id
+                              }
+                            >
+                              {
+                                category.name
+                              }{' '}
+                              — New
+                            </option>
+                          )
+                        )}
+                      </select>
+
+                      <button
+                        className="destination-add"
+                        onClick={() =>
+                          void handleCreateDraftDiscovery()
+                        }
+                      >
+                        Create and Add
+                      </button>
+
+                      <p className="review-help">
+                        A new Discovery created
+                        here remains temporary
+                        until Review is
+                        completed.
+                      </p>
+                    </div>
+
+                    <div className="new-category-box">
+                      <h4>
+                        Create New Category
+                      </h4>
+
+                      <input
+                        value={
+                          newCategoryName
+                        }
+                        onChange={(event) =>
+                          setNewCategoryName(
+                            event.target.value
+                          )
+                        }
+                        placeholder="Category name"
+                      />
+
+                      <button
+                        className="destination-add"
+                        onClick={() =>
+                          void handleCreateDraftCategory()
+                        }
+                      >
+                        Create Category
+                      </button>
+
+                      <p className="review-help">
+                        A Category created here
+                        remains temporary until
+                        Review completion and is
+                        selected automatically.
+                      </p>
+                    </div>
+
+                    {discoveryError && (
+                      <p className="form-error">
+                        {discoveryError}
+                      </p>
+                    )}
+
+                    <button
+                      className="modal-cancel"
+                      onClick={() => {
+                        setShowDiscoveryPicker(
+                          false
+                        )
+
+                        setDiscoveryError('')
+                        setNewDiscoveryTitle('')
+                        setNewCategoryName('')
                       }}
                     >
                       Cancel

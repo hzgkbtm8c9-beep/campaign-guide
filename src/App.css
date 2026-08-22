@@ -505,3 +505,52 @@ h1 {
   padding: 10px 12px;
   border-radius: 6px;
 }
+.discovery-destinations {
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid #c7b58e;
+}
+
+.discovery-destinations h3 {
+  color: #173550;
+  margin: 0 0 14px;
+}
+
+.discovery-picker {
+  margin-top: 14px;
+  padding: 18px;
+  background: #e8dcc0;
+  border: 1px solid #b9a477;
+  border-radius: 8px;
+}
+
+.discovery-picker h4 {
+  color: #173550;
+  margin: 0 0 12px;
+}
+
+.new-discovery-box,
+.new-category-box {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #c7b58e;
+}
+
+.new-discovery-box label,
+.new-category-box label {
+  color: #173550;
+  font-weight: bold;
+}
+
+.new-discovery-box input,
+.new-category-box input,
+.new-discovery-box select {
+  width: 100%;
+  border: 1px solid #a99368;
+  background: #fffaf0;
+  color: #30251b;
+  padding: 10px 12px;
+  border-radius: 6px;
+}

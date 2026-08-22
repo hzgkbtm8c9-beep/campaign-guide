@@ -101,6 +101,23 @@ export interface ReviewDraftPerson {
   updatedAt: string
 }
 
+export interface ReviewDraftCategory {
+  id: string
+  reviewDraftId: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ReviewDraftDiscovery {
+  id: string
+  reviewDraftId: string
+  title: string
+  categoryRef: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ReviewDestination {
   id: string
   reviewItemId: string
@@ -113,20 +130,48 @@ export interface ReviewDestination {
 
 class CampaignGuideDatabase extends Dexie {
   campaigns!: EntityTable<Campaign, 'id'>
+
   sessions!: EntityTable<Session, 'id'>
+
   quickNotes!: EntityTable<QuickNote, 'id'>
+
   people!: EntityTable<Person, 'id'>
+
   discoveryCategories!: EntityTable<
     DiscoveryCategory,
     'id'
   >
-  discoveries!: EntityTable<Discovery, 'id'>
-  reviewDrafts!: EntityTable<ReviewDraft, 'id'>
-  reviewItems!: EntityTable<ReviewItem, 'id'>
+
+  discoveries!: EntityTable<
+    Discovery,
+    'id'
+  >
+
+  reviewDrafts!: EntityTable<
+    ReviewDraft,
+    'id'
+  >
+
+  reviewItems!: EntityTable<
+    ReviewItem,
+    'id'
+  >
+
   reviewDraftPeople!: EntityTable<
     ReviewDraftPerson,
     'id'
   >
+
+  reviewDraftCategories!: EntityTable<
+    ReviewDraftCategory,
+    'id'
+  >
+
+  reviewDraftDiscoveries!: EntityTable<
+    ReviewDraftDiscovery,
+    'id'
+  >
+
   reviewDestinations!: EntityTable<
     ReviewDestination,
     'id'
@@ -152,7 +197,7 @@ class CampaignGuideDatabase extends Dexie {
     this.version(3).stores({
       campaigns: 'id, name, createdAt',
       sessions:
-        'id, campaignId, sessionId, status, currentReviewItemId',
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
       quickNotes:
         'id, campaignId, sessionId, capturedAt',
       reviewDrafts:
@@ -247,7 +292,45 @@ class CampaignGuideDatabase extends Dexie {
       reviewDestinations:
         'id, reviewItemId, destinationType, targetId',
     })
+
+    this.version(9).stores({
+      campaigns: 'id, name, createdAt',
+
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+
+      people:
+        'id, campaignId, name, createdAt',
+
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftCategories:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftDiscoveries:
+        'id, reviewDraftId, title, categoryRef, createdAt',
+
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
   }
 }
 
-export const db = new CampaignGuideDatabase()
+export const db =
+  new CampaignGuideDatabase()
