@@ -1228,3 +1228,591 @@ export async function createReviewDraftDiscoveryAndDestination(
     }
   )
 }
+/*
+ * REVIEW ITEM RESOLUTION
+ */
+
+export async function setReviewItemDiscarded(
+  reviewItemId: string,
+  isDiscarded: boolean
+) {
+  const reviewItem =
+    await db.reviewItems.get(
+      reviewItemId
+    )
+
+  if (!reviewItem) {
+    throw new Error(
+      'Review item not found.'
+    )
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  await db.reviewItems.update(
+    reviewItemId,
+    {
+      isDiscarded,
+      updatedAt: timestamp,
+    }
+  )
+
+  return db.reviewItems.get(
+    reviewItemId
+  )
+}
+/*
+ * REVIEW RESOLUTION SUMMARY
+ */
+
+export async function getReviewResolutionSummary(
+  reviewDraftId: string
+) {
+  const reviewItems =
+    await db.reviewItems
+      .where('reviewDraftId')
+      .equals(reviewDraftId)
+      .toArray()
+
+  const reviewItemIds =
+    new Set(
+      reviewItems.map(
+        (item) => item.id
+      )
+    )
+
+  const destinations =
+    await db.reviewDestinations
+      .toArray()
+
+  const destinationItemIds =
+    new Set(
+      destinations
+        .filter(
+          (destination) =>
+            reviewItemIds.has(
+              destination.reviewItemId
+            )
+        )
+        .map(
+          (destination) =>
+            destination.reviewItemId
+        )
+    )
+
+  const resolvedItemIds =
+    reviewItems
+      .filter(
+        (item) =>
+          item.isDiscarded ||
+          destinationItemIds.has(
+            item.id
+          )
+      )
+      .map(
+        (item) => item.id
+      )
+
+  return {
+    totalCount:
+      reviewItems.length,
+
+    resolvedCount:
+      resolvedItemIds.length,
+
+    unresolvedCount:
+      reviewItems.length -
+      resolvedItemIds.length,
+
+    resolvedItemIds,
+  }
+}
+/*
+ * REVIEW SUMMARY DATA
+ */
+
+export async function getReviewSummaryData(
+  reviewDraftId: string
+) {
+  const reviewItems =
+    await db.reviewItems
+      .where('reviewDraftId')
+      .equals(reviewDraftId)
+      .toArray()
+
+  const quickNoteIds =
+    reviewItems.map(
+      (item) => item.quickNoteId
+    )
+
+  const quickNotes =
+    await db.quickNotes
+      .where('id')
+      .anyOf(quickNoteIds)
+      .toArray()
+
+  const reviewItemIds =
+    reviewItems.map(
+      (item) => item.id
+    )
+
+  const destinations =
+    await db.reviewDestinations
+      .where('reviewItemId')
+      .anyOf(reviewItemIds)
+      .toArray()
+
+  return reviewItems.map(
+    (reviewItem) => ({
+      reviewItem,
+
+      quickNote:
+        quickNotes.find(
+          (quickNote) =>
+            quickNote.id ===
+            reviewItem.quickNoteId
+        ),
+
+      destinations:
+        destinations.filter(
+          (destination) =>
+            destination.reviewItemId ===
+            reviewItem.id
+        ),
+
+      isResolved:
+        reviewItem.isDiscarded ||
+        destinations.some(
+          (destination) =>
+            destination.reviewItemId ===
+            reviewItem.id
+        ),
+    })
+  )
+}
+/*
+ * COMPLETE REVIEW
+ */
+
+export async function completeReview(
+  reviewDraftId: string
+) {
+  return db.transaction(
+    'rw',
+    [
+      db.sessions,
+      db.reviewDrafts,
+      db.reviewItems,
+      db.reviewDestinations,
+      db.reviewDraftPeople,
+      db.reviewDraftCategories,
+      db.reviewDraftDiscoveries,
+      db.people,
+      db.discoveryCategories,
+      db.discoveries,
+    ],
+    async () => {
+      const reviewDraft =
+        await db.reviewDrafts.get(
+          reviewDraftId
+        )
+
+      if (!reviewDraft) {
+        throw new Error(
+          'Review draft not found.'
+        )
+      }
+
+      if (
+        reviewDraft.status ===
+        'completed'
+      ) {
+        throw new Error(
+          'Review is already completed.'
+        )
+      }
+
+      const session =
+        await db.sessions.get(
+          reviewDraft.sessionId
+        )
+
+      if (!session) {
+        throw new Error(
+          'Session not found.'
+        )
+      }
+
+      const reviewItems =
+        await db.reviewItems
+          .where('reviewDraftId')
+          .equals(reviewDraft.id)
+          .toArray()
+
+      const reviewItemIds =
+        reviewItems.map(
+          (item) => item.id
+        )
+
+      const destinations =
+        reviewItemIds.length > 0
+          ? await db.reviewDestinations
+              .where('reviewItemId')
+              .anyOf(reviewItemIds)
+              .toArray()
+          : []
+
+      const discardedItemIds =
+        new Set(
+          reviewItems
+            .filter(
+              (item) => item.isDiscarded
+            )
+            .map(
+              (item) => item.id
+            )
+        )
+
+      const committedDestinations =
+        destinations.filter(
+          (destination) =>
+            !discardedItemIds.has(
+              destination.reviewItemId
+            )
+        )
+
+      const unresolvedItems =
+        reviewItems.filter(
+          (item) => {
+            if (item.isDiscarded) {
+              return false
+            }
+
+            return !destinations.some(
+              (destination) =>
+                destination.reviewItemId ===
+                item.id
+            )
+          }
+        )
+
+      if (
+        unresolvedItems.length > 0
+      ) {
+        throw new Error(
+          'All Review Items must be resolved before completion.'
+        )
+      }
+
+      const timestamp =
+        new Date().toISOString()
+
+      const draftPeople =
+        await db.reviewDraftPeople
+          .where('reviewDraftId')
+          .equals(reviewDraft.id)
+          .toArray()
+
+      const draftCategories =
+        await db.reviewDraftCategories
+          .where('reviewDraftId')
+          .equals(reviewDraft.id)
+          .toArray()
+
+      const draftDiscoveries =
+        await db.reviewDraftDiscoveries
+          .where('reviewDraftId')
+          .equals(reviewDraft.id)
+          .toArray()
+
+      const personIdMap =
+        new Map<string, string>()
+
+      for (
+        const draftPerson
+        of draftPeople
+      ) {
+        const isReferenced =
+          committedDestinations.some(
+            (destination) =>
+              destination.destinationType ===
+                'person' &&
+              destination.targetId ===
+                draftPerson.id
+          )
+
+        if (!isReferenced) {
+          continue
+        }
+
+        const permanentId =
+          crypto.randomUUID()
+
+        personIdMap.set(
+          draftPerson.id,
+          permanentId
+        )
+
+        await db.people.add({
+          id: permanentId,
+          campaignId:
+            reviewDraft.campaignId,
+          name: draftPerson.name,
+          description: '',
+          notes: '',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+      }
+
+      const categoryIdMap =
+        new Map<string, string>()
+
+      const existingCategories =
+        await db.discoveryCategories
+          .where('campaignId')
+          .equals(
+            reviewDraft.campaignId
+          )
+          .toArray()
+
+      let nextSortPosition =
+        existingCategories.length
+
+      for (
+        const draftCategory
+        of draftCategories
+      ) {
+        const isUsed =
+          draftDiscoveries.some(
+            (discovery) =>
+              discovery.categoryRef ===
+              draftCategory.id
+          )
+
+        if (!isUsed) {
+          continue
+        }
+
+        const permanentId =
+          crypto.randomUUID()
+
+        categoryIdMap.set(
+          draftCategory.id,
+          permanentId
+        )
+
+        await db.discoveryCategories.add({
+          id: permanentId,
+          campaignId:
+            reviewDraft.campaignId,
+          name: draftCategory.name,
+          sortPosition:
+            nextSortPosition,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+
+        nextSortPosition += 1
+      }
+
+      const discoveryIdMap =
+        new Map<string, string>()
+
+      for (
+        const draftDiscovery
+        of draftDiscoveries
+      ) {
+        const isReferenced =
+          committedDestinations.some(
+            (destination) =>
+              destination.destinationType ===
+                'discovery' &&
+              destination.targetId ===
+                draftDiscovery.id
+          )
+
+        if (!isReferenced) {
+          continue
+        }
+
+        const permanentCategoryId =
+          categoryIdMap.get(
+            draftDiscovery.categoryRef
+          ) ??
+          draftDiscovery.categoryRef
+
+        const permanentId =
+          crypto.randomUUID()
+
+        discoveryIdMap.set(
+          draftDiscovery.id,
+          permanentId
+        )
+
+        await db.discoveries.add({
+          id: permanentId,
+          campaignId:
+            reviewDraft.campaignId,
+          title:
+            draftDiscovery.title,
+          categoryId:
+            permanentCategoryId,
+          discoveredInSessionId:
+            session.id,
+          notes: '',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+      }
+
+      const journalTexts =
+        committedDestinations
+          .filter(
+            (destination) =>
+              destination.destinationType ===
+              'journal'
+          )
+          .map(
+            (destination) =>
+              destination.text.trim()
+          )
+          .filter(Boolean)
+
+      const journalText =
+        journalTexts.join('\n\n')
+
+      for (
+        const destination
+        of committedDestinations
+      ) {
+        if (
+          destination.destinationType ===
+            'person' &&
+          destination.targetId
+        ) {
+          const permanentPersonId =
+            personIdMap.get(
+              destination.targetId
+            ) ??
+            destination.targetId
+
+          const person =
+            await db.people.get(
+              permanentPersonId
+            )
+
+          if (person) {
+            const nextNotes =
+              [
+                person.notes.trim(),
+                destination.text.trim(),
+              ]
+                .filter(Boolean)
+                .join('\n\n')
+
+            await db.people.update(
+              permanentPersonId,
+              {
+                notes: nextNotes,
+                updatedAt: timestamp,
+              }
+            )
+          }
+        }
+
+        if (
+          destination.destinationType ===
+            'discovery' &&
+          destination.targetId
+        ) {
+          const permanentDiscoveryId =
+            discoveryIdMap.get(
+              destination.targetId
+            ) ??
+            destination.targetId
+
+          const discovery =
+            await db.discoveries.get(
+              permanentDiscoveryId
+            )
+
+          if (discovery) {
+            const nextNotes =
+              [
+                discovery.notes.trim(),
+                destination.text.trim(),
+              ]
+                .filter(Boolean)
+                .join('\n\n')
+
+            await db.discoveries.update(
+              permanentDiscoveryId,
+              {
+                notes: nextNotes,
+                updatedAt: timestamp,
+              }
+            )
+          }
+        }
+      }
+
+      await db.sessions.update(
+        session.id,
+        {
+          status: 'completed',
+          journalText,
+          reviewCompletedAt:
+            timestamp,
+          updatedAt: timestamp,
+        }
+      )
+
+      await db.reviewDrafts.update(
+        reviewDraft.id,
+        {
+          status: 'completed',
+          updatedAt: timestamp,
+        }
+      )
+
+      return {
+        sessionId: session.id,
+        journalText,
+        createdPeople:
+          Array.from(
+            personIdMap.values()
+          ),
+        createdDiscoveries:
+          Array.from(
+            discoveryIdMap.values()
+          ),
+      }
+    }
+  )
+}
+/*
+ * COMPLETED SESSIONS
+ */
+
+export async function getCompletedSessions(
+  campaignId: string
+) {
+  const sessions =
+    await db.sessions
+      .where('campaignId')
+      .equals(campaignId)
+      .filter(
+        (session) =>
+          session.status ===
+          'completed'
+      )
+      .toArray()
+
+  return sessions.sort(
+    (a, b) =>
+      b.sessionNumber -
+      a.sessionNumber
+  )
+}

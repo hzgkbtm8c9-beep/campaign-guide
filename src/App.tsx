@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import PeoplePage from './pages/PeoplePage'
+import DiscoveriesPage from './pages/DiscoveriesPage'
+import JournalPage from './pages/JournalPage'
 
 import {
   addDiscoveryDestination,
@@ -7,6 +10,7 @@ import {
   addPersonDestination,
   addReviewDraftDiscoveryDestination,
   addReviewDraftPersonDestination,
+  completeReview,
   createCampaign,
   createQuickNote,
   createReviewDraftCategory,
@@ -24,8 +28,11 @@ import {
   getReviewDraftCategories,
   getReviewDraftDiscoveries,
   getReviewDraftPeople,
+  getReviewResolutionSummary,
+  getReviewSummaryData,
   removeReviewDestination,
   setCurrentReviewItem,
+  setReviewItemDiscarded,
   startOrResumeReview,
   startSession,
   updateReviewDestinationText,
@@ -58,7 +65,10 @@ type Section =
   | 'reminders'
   | 'guide'
 
-const sections: { id: Section; label: string }[] = [
+const sections: {
+  id: Section
+  label: string
+}[] = [
   { id: 'today', label: 'Today' },
   { id: 'character', label: 'Character' },
   { id: 'ferret', label: 'Ferret' },
@@ -81,29 +91,36 @@ function QuickNoteModal({
 }) {
   const [text, setText] = useState('')
   const [error, setError] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const [isSaving, setIsSaving] =
+    useState(false)
 
   async function handleSave() {
     setError('')
 
     if (!text.trim()) {
-      setError('Quick Note text is required.')
+      setError(
+        'Quick Note text is required.'
+      )
       return
     }
 
     try {
       setIsSaving(true)
 
-      const quickNote = await createQuickNote(
-        session.campaignId,
-        session.id,
-        text
-      )
+      const quickNote =
+        await createQuickNote(
+          session.campaignId,
+          session.id,
+          text
+        )
 
       onSaved(quickNote)
     } catch (error) {
       console.error(error)
-      setError('Quick Note could not be saved.')
+
+      setError(
+        'Quick Note could not be saved.'
+      )
     } finally {
       setIsSaving(false)
     }
@@ -128,7 +145,9 @@ function QuickNoteModal({
         />
 
         {error && (
-          <p className="form-error">{error}</p>
+          <p className="form-error">
+            {error}
+          </p>
         )}
 
         <div className="modal-actions">
@@ -161,12 +180,14 @@ function ReviewScreen({
   reviewItems,
   quickNotes,
   onClose,
+  onCompleted,
 }: {
   session: Session
   reviewDraft: ReviewDraft
   reviewItems: ReviewItem[]
   quickNotes: QuickNote[]
   onClose: () => void
+  onCompleted: () => Promise<void>
 }) {
   const initialIndex = Math.max(
     0,
@@ -180,33 +201,45 @@ function ReviewScreen({
   const [items, setItems] =
     useState<ReviewItem[]>(reviewItems)
 
-  const [currentIndex, setCurrentIndex] =
-    useState(initialIndex)
+  const [
+    currentIndex,
+    setCurrentIndex,
+  ] = useState(initialIndex)
 
-  const [destinations, setDestinations] =
-    useState<ReviewDestination[]>([])
+  const [
+    destinations,
+    setDestinations,
+  ] = useState<ReviewDestination[]>([])
 
   const [people, setPeople] =
     useState<Person[]>([])
 
-  const [draftPeople, setDraftPeople] =
-    useState<ReviewDraftPerson[]>([])
+  const [
+    draftPeople,
+    setDraftPeople,
+  ] = useState<ReviewDraftPerson[]>([])
 
-  const [categories, setCategories] =
-    useState<DiscoveryCategory[]>([])
+  const [
+    categories,
+    setCategories,
+  ] = useState<DiscoveryCategory[]>([])
 
   const [
     draftCategories,
     setDraftCategories,
   ] = useState<ReviewDraftCategory[]>([])
 
-  const [discoveries, setDiscoveries] =
-    useState<Discovery[]>([])
+  const [
+    discoveries,
+    setDiscoveries,
+  ] = useState<Discovery[]>([])
 
   const [
     draftDiscoveries,
     setDraftDiscoveries,
-  ] = useState<ReviewDraftDiscovery[]>([])
+  ] = useState<
+    ReviewDraftDiscovery[]
+  >([])
 
   const [
     isLoadingDestinations,
@@ -253,6 +286,50 @@ function ReviewScreen({
     setDiscoveryError,
   ] = useState('')
 
+  const [
+    resolvedItemIds,
+    setResolvedItemIds,
+  ] = useState<string[]>([])
+
+  const [
+    showSummary,
+    setShowSummary,
+  ] = useState(false)
+
+  const [
+    summaryEntries,
+    setSummaryEntries,
+  ] = useState<
+    Awaited<
+      ReturnType<
+        typeof getReviewSummaryData
+      >
+    >
+  >([])
+
+  const [
+    isCompleting,
+    setIsCompleting,
+  ] = useState(false)
+
+  const [
+    completionError,
+    setCompletionError,
+  ] = useState('')
+
+  async function refreshResolutionSummary() {
+    const summary =
+      await getReviewResolutionSummary(
+        reviewDraft.id
+      )
+
+    setResolvedItemIds(
+      summary.resolvedItemIds
+    )
+
+    return summary
+  }
+
   const currentItem =
     items[currentIndex]
 
@@ -284,6 +361,21 @@ function ReviewScreen({
         'discovery'
     )
 
+  const currentItemResolved =
+    Boolean(
+      currentItem &&
+        resolvedItemIds.includes(
+          currentItem.id
+        )
+    )
+
+  const resolvedCount =
+    resolvedItemIds.length
+
+  const allItemsResolved =
+    items.length > 0 &&
+    resolvedCount === items.length
+
   useEffect(() => {
     async function loadReferenceData() {
       const [
@@ -294,27 +386,51 @@ function ReviewScreen({
         permanentDiscoveries,
         temporaryDiscoveries,
       ] = await Promise.all([
-        getPeople(session.campaignId),
-        getReviewDraftPeople(reviewDraft.id),
+        getPeople(
+          session.campaignId
+        ),
+
+        getReviewDraftPeople(
+          reviewDraft.id
+        ),
+
         getDiscoveryCategories(
           session.campaignId
         ),
+
         getReviewDraftCategories(
           reviewDraft.id
         ),
-        getDiscoveries(session.campaignId),
+
+        getDiscoveries(
+          session.campaignId
+        ),
+
         getReviewDraftDiscoveries(
           reviewDraft.id
         ),
       ])
 
-      setPeople(permanentPeople)
-      setDraftPeople(temporaryPeople)
+      setPeople(
+        permanentPeople
+      )
 
-      setCategories(permanentCategories)
-      setDraftCategories(temporaryCategories)
+      setDraftPeople(
+        temporaryPeople
+      )
 
-      setDiscoveries(permanentDiscoveries)
+      setCategories(
+        permanentCategories
+      )
+
+      setDraftCategories(
+        temporaryCategories
+      )
+
+      setDiscoveries(
+        permanentDiscoveries
+      )
+
       setDraftDiscoveries(
         temporaryDiscoveries
       )
@@ -336,6 +452,10 @@ function ReviewScreen({
   ])
 
   useEffect(() => {
+    void refreshResolutionSummary()
+  }, [reviewDraft.id])
+
+  useEffect(() => {
     if (!currentItem) {
       return
     }
@@ -352,7 +472,10 @@ function ReviewScreen({
 
       if (!cancelled) {
         setDestinations(result)
-        setIsLoadingDestinations(false)
+
+        setIsLoadingDestinations(
+          false
+        )
       }
     }
 
@@ -382,7 +505,9 @@ function ReviewScreen({
       }, 500)
 
     return () => {
-      window.clearTimeout(saveTimer)
+      window.clearTimeout(
+        saveTimer
+      )
     }
   }, [
     currentItem?.id,
@@ -407,8 +532,11 @@ function ReviewScreen({
       )
 
     return () => {
-      timers.forEach((timer) =>
-        window.clearTimeout(timer)
+      timers.forEach(
+        (timer) =>
+          window.clearTimeout(
+            timer
+          )
       )
     }
   }, [destinations])
@@ -420,15 +548,19 @@ function ReviewScreen({
       return
     }
 
-    setItems((currentItems) =>
-      currentItems.map((item) =>
-        item.id === currentItem.id
-          ? {
-              ...item,
-              workingText: newText,
-            }
-          : item
-      )
+    setItems(
+      (currentItems) =>
+        currentItems.map(
+          (item) =>
+            item.id ===
+            currentItem.id
+              ? {
+                  ...item,
+                  workingText:
+                    newText,
+                }
+              : item
+        )
     )
   }
 
@@ -436,16 +568,18 @@ function ReviewScreen({
     destinationId: string,
     text: string
   ) {
-    setDestinations((current) =>
-      current.map((destination) =>
-        destination.id ===
-        destinationId
-          ? {
-              ...destination,
-              text,
-            }
-          : destination
-      )
+    setDestinations(
+      (current) =>
+        current.map(
+          (destination) =>
+            destination.id ===
+            destinationId
+              ? {
+                  ...destination,
+                  text,
+                }
+              : destination
+        )
     )
   }
 
@@ -455,7 +589,8 @@ function ReviewScreen({
     const permanentCategory =
       categories.find(
         (category) =>
-          category.id === categoryRef
+          category.id ===
+          categoryRef
       )
 
     if (permanentCategory) {
@@ -465,7 +600,8 @@ function ReviewScreen({
     const draftCategory =
       draftCategories.find(
         (category) =>
-          category.id === categoryRef
+          category.id ===
+          categoryRef
       )
 
     if (draftCategory) {
@@ -476,7 +612,8 @@ function ReviewScreen({
   }
 
   function getPersonLabel(
-    destination: ReviewDestination
+    destination:
+      ReviewDestination
   ) {
     const permanentPerson =
       people.find(
@@ -504,7 +641,8 @@ function ReviewScreen({
   }
 
   function getDiscoveryLabel(
-    destination: ReviewDestination
+    destination:
+      ReviewDestination
   ) {
     const permanentDiscovery =
       discoveries.find(
@@ -527,29 +665,86 @@ function ReviewScreen({
       )
 
     if (draftDiscovery) {
-  const permanentCategory =
-    categories.find(
-      (category) =>
-        category.id ===
-        draftDiscovery.categoryRef
-    )
+      const permanentCategory =
+        categories.find(
+          (category) =>
+            category.id ===
+            draftDiscovery.categoryRef
+        )
 
-  const draftCategory =
-    draftCategories.find(
-      (category) =>
-        category.id ===
-        draftDiscovery.categoryRef
-    )
+      const draftCategory =
+        draftCategories.find(
+          (category) =>
+            category.id ===
+            draftDiscovery.categoryRef
+        )
 
-  const categoryName =
-    permanentCategory?.name ??
-    draftCategory?.name ??
-    'Unknown Category'
+      const categoryName =
+        permanentCategory?.name ??
+        draftCategory?.name ??
+        'Unknown Category'
 
-  return `${draftDiscovery.title} — ${categoryName} — New`
-}
+      return `${draftDiscovery.title} — ${categoryName} — New`
+    }
 
     return 'Unavailable Discovery'
+  }
+
+  function getDestinationLabel(
+    destination:
+      ReviewDestination
+  ) {
+    if (
+      destination.destinationType ===
+      'journal'
+    ) {
+      return 'Journal'
+    }
+
+    if (
+      destination.destinationType ===
+      'person'
+    ) {
+      return `Person: ${getPersonLabel(
+        destination
+      )}`
+    }
+
+    return `Discovery: ${getDiscoveryLabel(
+      destination
+    )}`
+  }
+
+  async function handleDiscardToggle() {
+    if (!currentItem) {
+      return
+    }
+
+    const nextValue =
+      !currentItem.isDiscarded
+
+    const updatedItem =
+      await setReviewItemDiscarded(
+        currentItem.id,
+        nextValue
+      )
+
+    if (!updatedItem) {
+      return
+    }
+
+    setItems(
+      (currentItems) =>
+        currentItems.map(
+          (item) =>
+            item.id ===
+            updatedItem.id
+              ? updatedItem
+              : item
+        )
+    )
+
+    await refreshResolutionSummary()
   }
 
   async function handleAddJournal() {
@@ -563,23 +758,27 @@ function ReviewScreen({
         currentItem.workingText
       )
 
-    setDestinations((current) => {
-      const alreadyExists =
-        current.some(
-          (item) =>
-            item.id ===
-            destination.id
-        )
+    setDestinations(
+      (current) => {
+        const alreadyExists =
+          current.some(
+            (item) =>
+              item.id ===
+              destination.id
+          )
 
-      if (alreadyExists) {
-        return current
+        if (alreadyExists) {
+          return current
+        }
+
+        return [
+          ...current,
+          destination,
+        ]
       }
+    )
 
-      return [
-        ...current,
-        destination,
-      ]
-    })
+    await refreshResolutionSummary()
   }
 
   async function handleAddPermanentPerson(
@@ -599,23 +798,27 @@ function ReviewScreen({
           currentItem.workingText
         )
 
-      setDestinations((current) => {
-        const alreadyExists =
-          current.some(
-            (item) =>
-              item.id ===
-              destination.id
-          )
+      setDestinations(
+        (current) => {
+          const alreadyExists =
+            current.some(
+              (item) =>
+                item.id ===
+                destination.id
+            )
 
-        if (alreadyExists) {
-          return current
+          if (alreadyExists) {
+            return current
+          }
+
+          return [
+            ...current,
+            destination,
+          ]
         }
+      )
 
-        return [
-          ...current,
-          destination,
-        ]
-      })
+      await refreshResolutionSummary()
 
       setShowPersonPicker(false)
     } catch (error) {
@@ -628,7 +831,8 @@ function ReviewScreen({
   }
 
   async function handleAddDraftPerson(
-    draftPerson: ReviewDraftPerson
+    draftPerson:
+      ReviewDraftPerson
   ) {
     if (!currentItem) {
       return
@@ -644,23 +848,27 @@ function ReviewScreen({
           currentItem.workingText
         )
 
-      setDestinations((current) => {
-        const alreadyExists =
-          current.some(
-            (item) =>
-              item.id ===
-              destination.id
-          )
+      setDestinations(
+        (current) => {
+          const alreadyExists =
+            current.some(
+              (item) =>
+                item.id ===
+                destination.id
+            )
 
-        if (alreadyExists) {
-          return current
+          if (alreadyExists) {
+            return current
+          }
+
+          return [
+            ...current,
+            destination,
+          ]
         }
+      )
 
-        return [
-          ...current,
-          destination,
-        ]
-      })
+      await refreshResolutionSummary()
 
       setShowPersonPicker(false)
     } catch (error) {
@@ -698,21 +906,27 @@ function ReviewScreen({
           currentItem.workingText
         )
 
-      setDraftPeople((current) =>
-        [
-          ...current,
-          result.draftPerson,
-        ].sort((a, b) =>
-          a.name.localeCompare(
-            b.name
+      setDraftPeople(
+        (current) =>
+          [
+            ...current,
+            result.draftPerson,
+          ].sort(
+            (a, b) =>
+              a.name.localeCompare(
+                b.name
+              )
           )
-        )
       )
 
-      setDestinations((current) => [
-        ...current,
-        result.destination,
-      ])
+      setDestinations(
+        (current) => [
+          ...current,
+          result.destination,
+        ]
+      )
+
+      await refreshResolutionSummary()
 
       setNewPersonName('')
       setShowPersonPicker(false)
@@ -742,25 +956,31 @@ function ReviewScreen({
           currentItem.workingText
         )
 
-      setDestinations((current) => {
-        const alreadyExists =
-          current.some(
-            (item) =>
-              item.id ===
-              destination.id
-          )
+      setDestinations(
+        (current) => {
+          const alreadyExists =
+            current.some(
+              (item) =>
+                item.id ===
+                destination.id
+            )
 
-        if (alreadyExists) {
-          return current
+          if (alreadyExists) {
+            return current
+          }
+
+          return [
+            ...current,
+            destination,
+          ]
         }
+      )
 
-        return [
-          ...current,
-          destination,
-        ]
-      })
+      await refreshResolutionSummary()
 
-      setShowDiscoveryPicker(false)
+      setShowDiscoveryPicker(
+        false
+      )
     } catch (error) {
       console.error(error)
 
@@ -771,7 +991,8 @@ function ReviewScreen({
   }
 
   async function handleAddDraftDiscovery(
-    draftDiscovery: ReviewDraftDiscovery
+    draftDiscovery:
+      ReviewDraftDiscovery
   ) {
     if (!currentItem) {
       return
@@ -787,25 +1008,31 @@ function ReviewScreen({
           currentItem.workingText
         )
 
-      setDestinations((current) => {
-        const alreadyExists =
-          current.some(
-            (item) =>
-              item.id ===
-              destination.id
-          )
+      setDestinations(
+        (current) => {
+          const alreadyExists =
+            current.some(
+              (item) =>
+                item.id ===
+                destination.id
+            )
 
-        if (alreadyExists) {
-          return current
+          if (alreadyExists) {
+            return current
+          }
+
+          return [
+            ...current,
+            destination,
+          ]
         }
+      )
 
-        return [
-          ...current,
-          destination,
-        ]
-      })
+      await refreshResolutionSummary()
 
-      setShowDiscoveryPicker(false)
+      setShowDiscoveryPicker(
+        false
+      )
     } catch (error) {
       console.error(error)
 
@@ -835,15 +1062,17 @@ function ReviewScreen({
           trimmedName
         )
 
-      setDraftCategories((current) =>
-        [
-          ...current,
-          category,
-        ].sort((a, b) =>
-          a.name.localeCompare(
-            b.name
+      setDraftCategories(
+        (current) =>
+          [
+            ...current,
+            category,
+          ].sort(
+            (a, b) =>
+              a.name.localeCompare(
+                b.name
+              )
           )
-        )
       )
 
       setSelectedCategoryRef(
@@ -894,24 +1123,33 @@ function ReviewScreen({
           currentItem.workingText
         )
 
-      setDraftDiscoveries((current) =>
-        [
-          ...current,
-          result.draftDiscovery,
-        ].sort((a, b) =>
-          a.title.localeCompare(
-            b.title
+      setDraftDiscoveries(
+        (current) =>
+          [
+            ...current,
+            result.draftDiscovery,
+          ].sort(
+            (a, b) =>
+              a.title.localeCompare(
+                b.title
+              )
           )
-        )
       )
 
-      setDestinations((current) => [
-        ...current,
-        result.destination,
-      ])
+      setDestinations(
+        (current) => [
+          ...current,
+          result.destination,
+        ]
+      )
+
+      await refreshResolutionSummary()
 
       setNewDiscoveryTitle('')
-      setShowDiscoveryPicker(false)
+
+      setShowDiscoveryPicker(
+        false
+      )
     } catch (error) {
       console.error(error)
 
@@ -928,13 +1166,16 @@ function ReviewScreen({
       destinationId
     )
 
-    setDestinations((current) =>
-      current.filter(
-        (destination) =>
-          destination.id !==
-          destinationId
-      )
+    setDestinations(
+      (current) =>
+        current.filter(
+          (destination) =>
+            destination.id !==
+            destinationId
+        )
     )
+
+    await refreshResolutionSummary()
   }
 
   async function saveCurrentReviewState() {
@@ -979,7 +1220,10 @@ function ReviewScreen({
     )
 
     setShowPersonPicker(false)
-    setShowDiscoveryPicker(false)
+
+    setShowDiscoveryPicker(
+      false
+    )
 
     setPersonError('')
     setDiscoveryError('')
@@ -988,7 +1232,96 @@ function ReviewScreen({
     setNewDiscoveryTitle('')
     setNewCategoryName('')
 
-    setCurrentIndex(nextIndex)
+    setCurrentIndex(
+      nextIndex
+    )
+  }
+
+  async function handleOpenSummary() {
+    setCompletionError('')
+
+    await saveCurrentReviewState()
+
+    await refreshResolutionSummary()
+
+    const summary =
+      await getReviewSummaryData(
+        reviewDraft.id
+      )
+
+    setSummaryEntries(
+      summary
+    )
+
+    setShowSummary(true)
+  }
+
+  async function handleSummaryJump(
+    reviewItemId: string
+  ) {
+    const index =
+      items.findIndex(
+        (item) =>
+          item.id ===
+          reviewItemId
+      )
+
+    if (index < 0) {
+      return
+    }
+
+    await setCurrentReviewItem(
+      reviewDraft.id,
+      reviewItemId
+    )
+
+    setCurrentIndex(index)
+
+    setShowSummary(false)
+
+    setShowPersonPicker(false)
+
+    setShowDiscoveryPicker(
+      false
+    )
+
+    setCompletionError('')
+  }
+
+  async function handleCompleteReview() {
+    setCompletionError('')
+
+    try {
+      setIsCompleting(true)
+
+      await saveCurrentReviewState()
+
+      const resolution =
+        await refreshResolutionSummary()
+
+      if (
+        resolution.unresolvedCount > 0
+      ) {
+        setCompletionError(
+          'All Quick Notes must be resolved before Review can be completed.'
+        )
+        return
+      }
+
+      await completeReview(
+        reviewDraft.id
+      )
+
+      await onCompleted()
+    } catch (error) {
+      console.error(error)
+
+      setCompletionError(
+        'Review could not be completed.'
+      )
+    } finally {
+      setIsCompleting(false)
+    }
   }
 
   async function handleBackToToday() {
@@ -1018,11 +1351,239 @@ function ReviewScreen({
         </button>
 
         <div className="review-panel">
-          <h1>Session Review</h1>
+          <h1>
+            Session Review
+          </h1>
 
           <p>
             No review items were found.
           </p>
+        </div>
+      </main>
+    )
+  }
+
+  if (showSummary) {
+    return (
+      <main className="review-workspace">
+        <div className="review-header">
+          <button
+            className="review-back-button"
+            onClick={() => {
+              setCompletionError('')
+
+              setShowSummary(false)
+            }}
+          >
+            ← Return to Review
+          </button>
+
+          <div>
+            <strong>
+              Session{' '}
+              {session.sessionNumber}
+            </strong>
+
+            <span className="review-position">
+              Resolved{' '}
+              {resolvedCount} of{' '}
+              {items.length}
+            </span>
+          </div>
+        </div>
+
+        <div className="review-panel">
+          <div className="review-title-row">
+            <div>
+              <h1>
+                Review Summary
+              </h1>
+
+              <p className="review-help">
+                Review what will be
+                committed before
+                completing this Session.
+              </p>
+            </div>
+
+            <button
+              className="review-back-button summary-today-button"
+              onClick={
+                handleBackToToday
+              }
+            >
+              Back to Today
+            </button>
+          </div>
+
+          <div className="summary-list">
+            {summaryEntries.map(
+              (entry, index) => (
+                <div
+                  className="summary-card"
+                  key={
+                    entry.reviewItem.id
+                  }
+                >
+                  <div className="summary-card-header">
+                    <div>
+                      <strong>
+                        Quick Note{' '}
+                        {index + 1}
+                      </strong>
+
+                      <span
+                        className={
+                          entry.isResolved
+                            ? 'resolution-badge resolved'
+                            : 'resolution-badge unresolved'
+                        }
+                      >
+                        {entry.reviewItem
+                          .isDiscarded
+                          ? 'Discarded'
+                          : entry.isResolved
+                            ? 'Resolved'
+                            : 'Unresolved'}
+                      </span>
+                    </div>
+
+                    <button
+                      className="review-button"
+                      onClick={() =>
+                        void handleSummaryJump(
+                          entry.reviewItem
+                            .id
+                        )
+                      }
+                    >
+                      Open Note
+                    </button>
+                  </div>
+
+                  {entry.quickNote && (
+                    <div className="summary-section">
+                      <h3>
+                        Original Quick Note
+                      </h3>
+
+                      <p>
+                        {
+                          entry.quickNote
+                            .text
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {entry.reviewItem
+                    .isDiscarded ? (
+                    <div className="summary-section">
+                      <h3>
+                        Outcome
+                      </h3>
+
+                      <p>
+                        This Quick Note is
+                        discarded and will
+                        create no permanent
+                        contribution.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="summary-section">
+                      <h3>
+                        Destinations
+                      </h3>
+
+                      {entry.destinations
+                        .length === 0 ? (
+                        <p className="review-help">
+                          No destinations
+                          selected.
+                        </p>
+                      ) : (
+                        <div className="summary-destinations">
+                          {entry.destinations.map(
+                            (
+                              destination
+                            ) => (
+                              <div
+                                className="summary-destination"
+                                key={
+                                  destination.id
+                                }
+                              >
+                                <strong>
+                                  {getDestinationLabel(
+                                    destination
+                                  )}
+                                </strong>
+
+                                <p>
+                                  {
+                                    destination.text
+                                  }
+                                </p>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="review-completion">
+            <h2>
+              Complete Review
+            </h2>
+
+            {allItemsResolved ? (
+              <p className="review-help">
+                All Quick Notes are
+                resolved. Completing
+                Review will commit the
+                selected Journal, People,
+                and Discovery
+                contributions and close
+                this Session.
+              </p>
+            ) : (
+              <p className="review-help">
+                Resolve all Quick Notes
+                before completing Review.
+                Currently{' '}
+                {resolvedCount} of{' '}
+                {items.length} are
+                resolved.
+              </p>
+            )}
+
+            {completionError && (
+              <p className="form-error">
+                {completionError}
+              </p>
+            )}
+
+            <button
+              className="primary-button"
+              onClick={() =>
+                void handleCompleteReview()
+              }
+              disabled={
+                !allItemsResolved ||
+                isCompleting
+              }
+            >
+              {isCompleting
+                ? 'Completing…'
+                : 'Complete Review'}
+            </button>
+          </div>
         </div>
       </main>
     )
@@ -1051,11 +1612,42 @@ function ReviewScreen({
             {currentIndex + 1} of{' '}
             {items.length}
           </span>
+
+          <span className="review-position">
+            Resolved{' '}
+            {resolvedCount} of{' '}
+            {items.length}
+          </span>
+
+          <button
+            className="review-button"
+            onClick={() =>
+              void handleOpenSummary()
+            }
+          >
+            View Summary
+          </button>
         </div>
       </div>
 
       <div className="review-panel">
-        <h1>Session Review</h1>
+        <div className="review-title-row">
+          <h1>
+            Session Review
+          </h1>
+
+          <span
+            className={
+              currentItemResolved
+                ? 'resolution-badge resolved'
+                : 'resolution-badge unresolved'
+            }
+          >
+            {currentItemResolved
+              ? 'Resolved'
+              : 'Unresolved'}
+          </span>
+        </div>
 
         <div className="review-block">
           <h2>
@@ -1068,7 +1660,9 @@ function ReviewScreen({
         </div>
 
         <div className="review-block">
-          <h2>Working Text</h2>
+          <h2>
+            Working Text
+          </h2>
 
           <textarea
             value={
@@ -1082,15 +1676,47 @@ function ReviewScreen({
           />
 
           <p className="review-help">
-            Changes are saved automatically
-            to the Review workspace. The
-            original Quick Note remains
-            unchanged.
+            Changes are saved
+            automatically to the Review
+            workspace. The original Quick
+            Note remains unchanged.
           </p>
         </div>
 
         <div className="review-block">
-          <h2>Destinations</h2>
+          <div className="discard-row">
+            <div>
+              <h2>Discard</h2>
+
+              <p className="review-help">
+                Discard means this Quick
+                Note will create no
+                permanent contribution
+                when Review is completed.
+              </p>
+            </div>
+
+            <button
+              className={
+                currentItem.isDiscarded
+                  ? 'discard-button active'
+                  : 'discard-button'
+              }
+              onClick={() =>
+                void handleDiscardToggle()
+              }
+            >
+              {currentItem.isDiscarded
+                ? 'Undo Discard'
+                : 'Discard Quick Note'}
+            </button>
+          </div>
+        </div>
+
+        <div className="review-block">
+          <h2>
+            Destinations
+          </h2>
 
           {isLoadingDestinations ? (
             <p className="review-help">
@@ -1151,13 +1777,17 @@ function ReviewScreen({
               </div>
 
               <div className="person-destinations">
-                <h3>People</h3>
+                <h3>
+                  People
+                </h3>
 
                 {personDestinations.map(
                   (destination) => (
                     <div
                       className="destination-card"
-                      key={destination.id}
+                      key={
+                        destination.id
+                      }
                     >
                       <div className="destination-heading">
                         <strong>
@@ -1191,8 +1821,9 @@ function ReviewScreen({
                       />
 
                       <p className="review-help">
-                        This Person contribution
-                        is independent from
+                        This Person
+                        contribution is
+                        independent from
                         Working Text.
                       </p>
                     </div>
@@ -1281,11 +1912,13 @@ function ReviewScreen({
                       </>
                     )}
 
-                    {people.length === 0 &&
+                    {people.length ===
+                      0 &&
                       draftPeople.length ===
                         0 && (
                         <p className="review-help">
-                          No People exist yet.
+                          No People exist
+                          yet.
                         </p>
                       )}
 
@@ -1318,9 +1951,9 @@ function ReviewScreen({
 
                       <p className="review-help">
                         A new Person created
-                        here remains temporary
-                        until Review is
-                        completed.
+                        here remains
+                        temporary until
+                        Review is completed.
                       </p>
                     </div>
 
@@ -1338,7 +1971,10 @@ function ReviewScreen({
                         )
 
                         setPersonError('')
-                        setNewPersonName('')
+
+                        setNewPersonName(
+                          ''
+                        )
                       }}
                     >
                       Cancel
@@ -1348,13 +1984,17 @@ function ReviewScreen({
               </div>
 
               <div className="discovery-destinations">
-                <h3>Discoveries</h3>
+                <h3>
+                  Discoveries
+                </h3>
 
                 {discoveryDestinations.map(
                   (destination) => (
                     <div
                       className="destination-card"
-                      key={destination.id}
+                      key={
+                        destination.id
+                      }
                     >
                       <div className="destination-heading">
                         <strong>
@@ -1418,12 +2058,15 @@ function ReviewScreen({
                       0 && (
                       <>
                         <p className="review-help">
-                          Existing Discoveries
+                          Existing
+                          Discoveries
                         </p>
 
                         <div className="person-picker-list">
                           {discoveries.map(
-                            (discovery) => (
+                            (
+                              discovery
+                            ) => (
                               <button
                                 key={
                                   discovery.id
@@ -1460,42 +2103,53 @@ function ReviewScreen({
                           {draftDiscoveries.map(
                             (
                               discovery
-                            ) => (
-                              <button
-                                key={
-                                  discovery.id
-                                }
-                                className="person-picker-item"
-                                onClick={() =>
-                                  void handleAddDraftDiscovery(
-                                    discovery
-                                  )
-                                }
-                              >
-                                {(() => {
-                                  const permanentCategory =
-                                    categories.find(
-                                      (category) =>
-                                        category.id ===
-                                        discovery.categoryRef
+                            ) => {
+                              const permanentCategory =
+                                categories.find(
+                                  (
+                                    category
+                                  ) =>
+                                    category.id ===
+                                    discovery.categoryRef
+                                )
+
+                              const draftCategory =
+                                draftCategories.find(
+                                  (
+                                    category
+                                  ) =>
+                                    category.id ===
+                                    discovery.categoryRef
+                                )
+
+                              const categoryName =
+                                permanentCategory?.name ??
+                                draftCategory?.name ??
+                                'Unknown Category'
+
+                              return (
+                                <button
+                                  key={
+                                    discovery.id
+                                  }
+                                  className="person-picker-item"
+                                  onClick={() =>
+                                    void handleAddDraftDiscovery(
+                                      discovery
                                     )
-
-                                  const draftCategory =
-                                    draftCategories.find(
-                                      (category) =>
-                                        category.id ===
-                                        discovery.categoryRef
-                                    )
-
-                                  const categoryName =
-                                    permanentCategory?.name ??
-                                    draftCategory?.name ??
-                                    'Unknown Category'
-
-                                  return `${discovery.title} — ${categoryName} — New`
-                                })()}
-                              </button>
-                            )
+                                  }
+                                >
+                                  {
+                                    discovery.title
+                                  }{' '}
+                                  —{' '}
+                                  {
+                                    categoryName
+                                  }{' '}
+                                  — New
+                                </button>
+                              )
+                            }
                           )}
                         </div>
                       </>
@@ -1506,14 +2160,15 @@ function ReviewScreen({
                       draftDiscoveries.length ===
                         0 && (
                         <p className="review-help">
-                          No Discoveries exist
-                          yet.
+                          No Discoveries
+                          exist yet.
                         </p>
                       )}
 
                     <div className="new-discovery-box">
                       <h4>
-                        Create New Discovery
+                        Create New
+                        Discovery
                       </h4>
 
                       <label htmlFor="new-discovery-title">
@@ -1594,10 +2249,10 @@ function ReviewScreen({
                       </button>
 
                       <p className="review-help">
-                        A new Discovery created
-                        here remains temporary
-                        until Review is
-                        completed.
+                        A new Discovery
+                        created here remains
+                        temporary until
+                        Review is completed.
                       </p>
                     </div>
 
@@ -1628,10 +2283,12 @@ function ReviewScreen({
                       </button>
 
                       <p className="review-help">
-                        A Category created here
-                        remains temporary until
-                        Review completion and is
-                        selected automatically.
+                        A Category created
+                        here remains
+                        temporary until
+                        Review completion
+                        and is selected
+                        automatically.
                       </p>
                     </div>
 
@@ -1648,9 +2305,17 @@ function ReviewScreen({
                           false
                         )
 
-                        setDiscoveryError('')
-                        setNewDiscoveryTitle('')
-                        setNewCategoryName('')
+                        setDiscoveryError(
+                          ''
+                        )
+
+                        setNewDiscoveryTitle(
+                          ''
+                        )
+
+                        setNewCategoryName(
+                          ''
+                        )
                       }}
                     >
                       Cancel
@@ -1800,8 +2465,8 @@ function TodayPage({
               </p>
 
               <p>
-                This session is currently
-                active.
+                This session is
+                currently active.
               </p>
 
               <p className="session-note-count">
@@ -1812,7 +2477,9 @@ function TodayPage({
               <button
                 className="primary-button"
                 onClick={() =>
-                  setShowQuickNote(true)
+                  setShowQuickNote(
+                    true
+                  )
                 }
               >
                 Quick Note
@@ -1823,9 +2490,7 @@ function TodayPage({
                 onClick={
                   handleEndSession
                 }
-                disabled={
-                  isEnding
-                }
+                disabled={isEnding}
               >
                 {isEnding
                   ? 'Ending…'
@@ -1844,7 +2509,9 @@ function TodayPage({
                   (session) => (
                     <div
                       className="review-card"
-                      key={session.id}
+                      key={
+                        session.id
+                      }
                     >
                       <strong>
                         Session{' '}
@@ -1946,16 +2613,22 @@ function TodayPage({
       {showQuickNote &&
         activeSession && (
           <QuickNoteModal
-            session={activeSession}
+            session={
+              activeSession
+            }
             onClose={() =>
-              setShowQuickNote(false)
+              setShowQuickNote(
+                false
+              )
             }
             onSaved={(quickNote) => {
               onQuickNoteSaved(
                 quickNote
               )
 
-              setShowQuickNote(false)
+              setShowQuickNote(
+                false
+              )
             }}
           />
         )}
@@ -1974,14 +2647,16 @@ function PlaceholderPage({
         <h1>{title}</h1>
 
         <p className="subtitle">
-          This section will be built
-          in a later stage.
+          This section will be
+          built in a later stage.
         </p>
       </section>
 
       <section className="page right-page">
         <div className="page-section">
-          <h2>Coming soon</h2>
+          <h2>
+            Coming soon
+          </h2>
 
           <p className="empty-message">
             The Campaign Guide
@@ -2104,7 +2779,9 @@ function CampaignApp({
     activeSection,
     setActiveSection,
   ] =
-    useState<Section>('today')
+    useState<Section>(
+      'today'
+    )
 
   const [
     activeSession,
@@ -2118,13 +2795,17 @@ function CampaignApp({
     quickNotes,
     setQuickNotes,
   ] =
-    useState<QuickNote[]>([])
+    useState<
+      QuickNote[]
+    >([])
 
   const [
     openReviews,
     setOpenReviews,
   ] =
-    useState<Session[]>([])
+    useState<
+      Session[]
+    >([])
 
   const [
     reviewSession,
@@ -2161,7 +2842,8 @@ function CampaignApp({
   const [
     isLoadingSession,
     setIsLoadingSession,
-  ] = useState(true)
+  ] =
+    useState(true)
 
   useEffect(() => {
     async function loadSessionState() {
@@ -2295,7 +2977,63 @@ function CampaignApp({
     )
 
     setReviewItems([])
-    setReviewQuickNotes([])
+
+    setReviewQuickNotes(
+      []
+    )
+  }
+
+  async function handleReviewCompleted() {
+    setReviewSession(
+      undefined
+    )
+
+    setReviewDraft(
+      undefined
+    )
+
+    setReviewItems([])
+
+    setReviewQuickNotes(
+      []
+    )
+
+    setActiveSection(
+      'today'
+    )
+
+    const active =
+      await getActiveSession(
+        campaign.id
+      )
+
+    setActiveSession(
+      active
+    )
+
+    if (active) {
+      const notes =
+        await getQuickNotesForSession(
+          active.id
+        )
+
+      setQuickNotes(
+        notes
+      )
+
+      setOpenReviews([])
+    } else {
+      setQuickNotes([])
+
+      const reviews =
+        await getOpenReviews(
+          campaign.id
+        )
+
+      setOpenReviews(
+        reviews
+      )
+    }
   }
 
   if (
@@ -2318,6 +3056,9 @@ function CampaignApp({
         }
         onClose={
           closeReview
+        }
+        onCompleted={
+          handleReviewCompleted
         }
       />
     )
@@ -2348,7 +3089,9 @@ function CampaignApp({
         {sections.map(
           (section) => (
             <button
-              key={section.id}
+              key={
+                section.id
+              }
               className={
                 activeSection ===
                 section.id
@@ -2369,46 +3112,37 @@ function CampaignApp({
 
       <main className="book-area">
         <div className="book">
-          {activeSection ===
-          'today' ? (
+          {activeSection === 'today' ? (
             <TodayPage
-              campaign={
-                campaign
+              campaign={campaign}
+              activeSession={activeSession}
+              quickNotes={quickNotes}
+              openReviews={openReviews}
+              onStartSession={handleStartSession}
+              onEndSession={handleEndSession}
+              onQuickNoteSaved={(quickNote) =>
+                setQuickNotes((current) => [
+                  ...current,
+                  quickNote,
+                ])
               }
-              activeSession={
-                activeSession
-              }
-              quickNotes={
-                quickNotes
-              }
-              openReviews={
-                openReviews
-              }
-              onStartSession={
-                handleStartSession
-              }
-              onEndSession={
-                handleEndSession
-              }
-              onQuickNoteSaved={(
-                quickNote
-              ) =>
-                setQuickNotes(
-                  (current) => [
-                    ...current,
-                    quickNote,
-                  ]
-                )
-              }
-              onOpenReview={
-                handleOpenReview
-              }
+              onOpenReview={handleOpenReview}
+            />
+          ) : activeSection === 'people' ? (
+            <PeoplePage
+              campaign={campaign}
+            />
+          ) : activeSection === 'discoveries' ? (
+            <DiscoveriesPage
+              campaign={campaign}
+            />
+          ) : activeSection === 'journal' ? (
+            <JournalPage
+              campaign={campaign}
             />
           ) : (
             <PlaceholderPage
-              title={
-                activeLabel
-              }
+              title={activeLabel}
             />
           )}
         </div>
@@ -2469,7 +3203,9 @@ function App() {
 
   return (
     <CampaignApp
-      campaign={campaign}
+      campaign={
+        campaign
+      }
     />
   )
 }

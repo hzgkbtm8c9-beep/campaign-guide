@@ -68,6 +68,7 @@ export interface Discovery {
   title: string
   categoryId: string
   discoveredInSessionId?: string
+  notes: string
   createdAt: string
   updatedAt: string
 }
@@ -294,7 +295,46 @@ class CampaignGuideDatabase extends Dexie {
     })
 
     this.version(9).stores({
-      campaigns: 'id, name, createdAt',
+      campaigns:
+        'id, name, createdAt',
+
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+
+      people:
+        'id, campaignId, name, createdAt',
+
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftCategories:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftDiscoveries:
+        'id, reviewDraftId, title, categoryRef, createdAt',
+
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
+
+    this.version(10).stores({
+      campaigns:
+        'id, name, createdAt',
 
       sessions:
         'id, campaignId, sessionNumber, status, startedAt, retiredAt',
