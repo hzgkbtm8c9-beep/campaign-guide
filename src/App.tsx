@@ -3,6 +3,9 @@ import './App.css'
 import PeoplePage from './pages/PeoplePage'
 import DiscoveriesPage from './pages/DiscoveriesPage'
 import JournalPage from './pages/JournalPage'
+import CharacterPage from './pages/CharacterPage'
+import GoalsPage from './pages/GoalsPage'
+import RemindersPage from './pages/RemindersPage'
 
 import {
   addDiscoveryDestination,
@@ -18,7 +21,7 @@ import {
   createReviewDraftPersonAndDestination,
   endSession,
   getActiveSession,
-  getCampaign,
+  getCampaigns,
   getDiscoveries,
   getDiscoveryCategories,
   getOpenReviews,
@@ -2371,6 +2374,7 @@ function TodayPage({
   onEndSession,
   onQuickNoteSaved,
   onOpenReview,
+  onSwitchCampaign
 }: {
   campaign: Campaign
   activeSession:
@@ -2386,6 +2390,7 @@ function TodayPage({
     (quickNote: QuickNote) => void
   onOpenReview:
     (session: Session) => Promise<void>
+  onSwitchCampaign: () => void
 }) {
   const [
     isStarting,
@@ -2449,6 +2454,13 @@ function TodayPage({
         <p className="subtitle">
           {campaign.name}
         </p>
+
+        <button
+          className="switch-campaign-button"
+          onClick={onSwitchCampaign}
+        >
+          Switch Campaign
+        </button>
 
         <div className="page-section">
           <h2>Session</h2>
@@ -2705,12 +2717,20 @@ function CampaignSetup({
 
       onCreated(campaign)
     } catch (error) {
-      console.error(error)
+  console.error(
+    'Could not create campaign.',
+    error
+  )
 
-      setError(
-        'Campaign could not be created.'
-      )
-    } finally {
+  const message =
+    error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : String(error)
+
+  setError(
+    `Campaign could not be created. ${message}`
+  )
+} finally {
       setIsCreating(false)
     }
   }
@@ -2770,10 +2790,82 @@ function CampaignSetup({
   )
 }
 
+function CampaignChooser({
+  campaigns,
+  onSelect,
+  onCreated,
+}: {
+  campaigns: Campaign[]
+  onSelect: (campaign: Campaign) => void
+  onCreated: (campaign: Campaign) => void
+}) {
+  const [
+    showCreate,
+    setShowCreate,
+  ] = useState(
+    campaigns.length === 0
+  )
+
+  if (showCreate) {
+    return (
+      <CampaignSetup
+        onCreated={(campaign) => {
+          onCreated(campaign)
+        }}
+      />
+    )
+  }
+
+  return (
+    <main className="setup-screen">
+      <div className="setup-card">
+        <div className="setup-mark">
+          ✦
+        </div>
+
+        <h1>
+          Campaign Guide
+        </h1>
+
+        <p>
+          Choose a campaign to continue.
+        </p>
+
+        <div className="campaign-choice-list">
+          {campaigns.map(
+            (campaign) => (
+              <button
+                key={campaign.id}
+                className="campaign-choice-button"
+                onClick={() =>
+                  onSelect(campaign)
+                }
+              >
+                {campaign.name}
+              </button>
+            )
+          )}
+        </div>
+
+        <button
+          className="primary-button setup-button"
+          onClick={() =>
+            setShowCreate(true)
+          }
+        >
+          Create New Campaign
+        </button>
+      </div>
+    </main>
+  )
+}
+
 function CampaignApp({
   campaign,
+  onSwitchCampaign,
 }: {
   campaign: Campaign
+  onSwitchCampaign: () => void
 }) {
   const [
     activeSection,
@@ -3115,6 +3207,7 @@ function CampaignApp({
           {activeSection === 'today' ? (
             <TodayPage
               campaign={campaign}
+              onSwitchCampaign={onSwitchCampaign}
               activeSession={activeSession}
               quickNotes={quickNotes}
               openReviews={openReviews}
@@ -3128,6 +3221,14 @@ function CampaignApp({
               }
               onOpenReview={handleOpenReview}
             />
+          ) : activeSection === 'character' ? (
+            <CharacterPage
+              campaign={campaign}
+            />
+          ) : activeSection === 'goals' ? (
+            <GoalsPage
+              campaign={campaign}
+            />
           ) : activeSection === 'people' ? (
             <PeoplePage
               campaign={campaign}
@@ -3138,6 +3239,10 @@ function CampaignApp({
             />
           ) : activeSection === 'journal' ? (
             <JournalPage
+              campaign={campaign}
+            />
+          ) : activeSection === 'reminders' ? (
+            <RemindersPage
               campaign={campaign}
             />
           ) : (
@@ -3153,6 +3258,14 @@ function CampaignApp({
 
 function App() {
   const [
+    campaigns,
+    setCampaigns,
+  ] =
+    useState<
+      Campaign[]
+    >([])
+
+  const [
     campaign,
     setCampaign,
   ] =
@@ -3167,12 +3280,12 @@ function App() {
     useState(true)
 
   useEffect(() => {
-    async function loadCampaign() {
-      const existingCampaign =
-        await getCampaign()
+    async function loadCampaigns() {
+      const existingCampaigns =
+        await getCampaigns()
 
-      setCampaign(
-        existingCampaign
+      setCampaigns(
+        existingCampaigns
       )
 
       setIsLoading(
@@ -3180,7 +3293,7 @@ function App() {
       )
     }
 
-    void loadCampaign()
+    void loadCampaigns()
   }, [])
 
   if (isLoading) {
@@ -3193,18 +3306,32 @@ function App() {
 
   if (!campaign) {
     return (
-      <CampaignSetup
-        onCreated={
+      <CampaignChooser
+        campaigns={campaigns}
+        onSelect={
           setCampaign
         }
+        onCreated={(newCampaign) => {
+          setCampaigns(
+            (current) => [
+              ...current,
+              newCampaign,
+            ]
+          )
+
+          setCampaign(
+            newCampaign
+          )
+        }}
       />
     )
   }
 
   return (
     <CampaignApp
-      campaign={
-        campaign
+      campaign={campaign}
+      onSwitchCampaign={() =>
+        setCampaign(undefined)
       }
     />
   )

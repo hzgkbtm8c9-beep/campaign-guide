@@ -18,6 +18,91 @@ export interface Campaign {
   updatedAt: string
 }
 
+export interface CharacterAttribute {
+  score: number | null
+  modifier: number | null
+}
+
+export interface Character {
+  id: string
+  campaignId: string
+
+  name: string
+  ancestry: string
+  characterClass: string
+
+  level: number | null
+  xp: number | null
+
+  title: string
+  alignment: string
+  background: string
+  deity: string
+
+  strength: CharacterAttribute
+  dexterity: CharacterAttribute
+  constitution: CharacterAttribute
+  intelligence: CharacterAttribute
+  wisdom: CharacterAttribute
+  charisma: CharacterAttribute
+
+  currentHp: number | null
+  maxHp: number | null
+  armorClass: number | null
+
+  attacks: string
+  talentsAndSpells: string
+
+  gear: string[]
+  freeToCarry: string
+
+  gp: number | null
+  sp: number | null
+  cp: number | null
+
+  createdAt: string
+  updatedAt: string
+}
+
+export type GoalTerm =
+  | 'short'
+  | 'mid'
+  | 'long'
+
+export type GoalStatus =
+  | 'active'
+  | 'completed'
+
+export interface Goal {
+  id: string
+  campaignId: string
+
+  title: string
+  term: GoalTerm
+
+  background: string
+  goal: string
+  howToMeasure: string
+  downside: string
+
+  hasSetback: boolean
+  status: GoalStatus
+
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Reminder {
+  id: string
+  campaignId: string
+
+  title: string
+  content: string
+
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Session {
   id: string
   campaignId: string
@@ -131,6 +216,12 @@ export interface ReviewDestination {
 
 class CampaignGuideDatabase extends Dexie {
   campaigns!: EntityTable<Campaign, 'id'>
+
+  characters!: EntityTable<Character, 'id'>
+
+  goals!: EntityTable<Goal, 'id'>
+
+  reminders!: EntityTable<Reminder, 'id'>
 
   sessions!: EntityTable<Session, 'id'>
 
@@ -335,6 +426,198 @@ class CampaignGuideDatabase extends Dexie {
     this.version(10).stores({
       campaigns:
         'id, name, createdAt',
+
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+
+      people:
+        'id, campaignId, name, createdAt',
+
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftCategories:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftDiscoveries:
+        'id, reviewDraftId, title, categoryRef, createdAt',
+
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
+
+    this.version(11).stores({
+      campaigns:
+        'id, name, createdAt',
+
+      characters:
+        'id, campaignId, name, updatedAt',
+
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+
+      people:
+        'id, campaignId, name, createdAt',
+
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftCategories:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftDiscoveries:
+        'id, reviewDraftId, title, categoryRef, createdAt',
+
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
+
+    this.version(12).stores({
+      campaigns:
+        'id, name, createdAt',
+
+      characters:
+        'id, campaignId, name, updatedAt',
+
+      goals:
+        'id, campaignId, term, status, updatedAt',
+
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+
+      people:
+        'id, campaignId, name, createdAt',
+
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftCategories:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftDiscoveries:
+        'id, reviewDraftId, title, categoryRef, createdAt',
+
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
+
+    this.version(13).stores({
+      campaigns:
+        'id, name, createdAt',
+
+      characters:
+        'id, campaignId, name, updatedAt',
+
+      goals:
+        'id, campaignId, term, status, hasSetback, updatedAt',
+
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+
+      people:
+        'id, campaignId, name, createdAt',
+
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftCategories:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftDiscoveries:
+        'id, reviewDraftId, title, categoryRef, createdAt',
+
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+    })
+    .upgrade(async (transaction) => {
+      await transaction
+        .table('goals')
+        .toCollection()
+        .modify((goal) => {
+          goal.background =
+            goal.notes ?? ''
+
+          goal.goal = ''
+          goal.howToMeasure = ''
+          goal.downside = ''
+          goal.hasSetback = false
+
+          delete goal.notes
+        })
+    })
+
+    this.version(14).stores({
+      campaigns:
+        'id, name, createdAt',
+
+      characters:
+        'id, campaignId, name, updatedAt',
+
+      goals:
+        'id, campaignId, term, status, hasSetback, updatedAt',
+
+      reminders:
+        'id, campaignId, updatedAt',
 
       sessions:
         'id, campaignId, sessionNumber, status, startedAt, retiredAt',

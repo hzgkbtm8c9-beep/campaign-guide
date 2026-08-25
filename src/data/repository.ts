@@ -1,13 +1,40 @@
 import { db, type Campaign } from './database'
 
+function createId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(
+    /[xy]/g,
+    (character) => {
+      const random =
+        Math.floor(
+          Math.random() * 16
+        )
+
+      const value =
+        character === 'x'
+          ? random
+          : (random & 0x3) | 0x8
+
+      return value.toString(16)
+    }
+  )
+}
+
 function nowIso() {
   return new Date().toISOString()
 }
 
-export async function getCampaign(): Promise<
-  Campaign | undefined
+export async function getCampaigns(): Promise<
+  Campaign[]
 > {
-  return db.campaigns.toCollection().first()
+  const campaigns =
+    await db.campaigns.toArray()
+
+  return campaigns.sort(
+    (a, b) =>
+      a.createdAt.localeCompare(
+        b.createdAt
+      )
+  )
 }
 
 export async function createCampaign(
@@ -22,7 +49,7 @@ export async function createCampaign(
   const timestamp = nowIso()
 
   const campaign: Campaign = {
-    id: crypto.randomUUID(),
+    id: createId(),
     name: trimmedName,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -82,7 +109,7 @@ export async function startSession(
         new Date().toISOString()
 
       const session = {
-        id: crypto.randomUUID(),
+        id: createId(),
         campaignId,
         sessionNumber:
           highestSessionNumber + 1,
@@ -118,7 +145,7 @@ export async function createQuickNote(
     new Date().toISOString()
 
   const quickNote = {
-    id: crypto.randomUUID(),
+    id: createId(),
     campaignId,
     sessionId,
     text: trimmedText,
@@ -257,7 +284,7 @@ export async function startOrResumeReview(
           )
 
         reviewDraft = {
-          id: crypto.randomUUID(),
+          id: createId(),
           campaignId:
             session.campaignId,
           sessionId: session.id,
@@ -276,7 +303,7 @@ export async function startOrResumeReview(
         const reviewItems =
           quickNotes.map(
             (quickNote) => ({
-              id: crypto.randomUUID(),
+              id: createId(),
               reviewDraftId:
                 reviewDraft!.id,
               quickNoteId:
@@ -442,7 +469,7 @@ export async function addJournalDestination(
     new Date().toISOString()
 
   const destination = {
-    id: crypto.randomUUID(),
+    id: createId(),
     reviewItemId,
     destinationType:
       'journal' as const,
@@ -538,7 +565,7 @@ export async function createPerson(
     new Date().toISOString()
 
   const person = {
-    id: crypto.randomUUID(),
+    id: createId(),
     campaignId,
     name: trimmedName,
     description: '',
@@ -613,7 +640,7 @@ export async function addPersonDestination(
     new Date().toISOString()
 
   const destination = {
-    id: crypto.randomUUID(),
+    id: createId(),
     reviewItemId,
     destinationType:
       'person' as const,
@@ -700,7 +727,7 @@ export async function addReviewDraftPersonDestination(
     new Date().toISOString()
 
   const destination = {
-    id: crypto.randomUUID(),
+    id: createId(),
     reviewItemId,
     destinationType:
       'person' as const,
@@ -773,7 +800,7 @@ export async function createReviewDraftPersonAndDestination(
         new Date().toISOString()
 
       const draftPerson = {
-        id: crypto.randomUUID(),
+        id: createId(),
         reviewDraftId,
         name: trimmedName,
         role: undefined,
@@ -786,7 +813,7 @@ export async function createReviewDraftPersonAndDestination(
       )
 
       const destination = {
-        id: crypto.randomUUID(),
+        id: createId(),
         reviewItemId,
         destinationType:
           'person' as const,
@@ -849,7 +876,7 @@ export async function ensureDefaultDiscoveryCategories(
   const categories =
     DEFAULT_DISCOVERY_CATEGORIES.map(
       (name, index) => ({
-        id: crypto.randomUUID(),
+        id: createId(),
         campaignId,
         name,
         sortPosition: index,
@@ -966,7 +993,7 @@ export async function addDiscoveryDestination(
     new Date().toISOString()
 
   const destination = {
-    id: crypto.randomUUID(),
+    id: createId(),
     reviewItemId,
     destinationType:
       'discovery' as const,
@@ -1040,7 +1067,7 @@ export async function addReviewDraftDiscoveryDestination(
     new Date().toISOString()
 
   const destination = {
-    id: crypto.randomUUID(),
+    id: createId(),
     reviewItemId,
     destinationType:
       'discovery' as const,
@@ -1084,7 +1111,7 @@ export async function createReviewDraftCategory(
     new Date().toISOString()
 
   const draftCategory = {
-    id: crypto.randomUUID(),
+    id: createId(),
     reviewDraftId,
     name: trimmedName,
     createdAt: timestamp,
@@ -1193,7 +1220,7 @@ export async function createReviewDraftDiscoveryAndDestination(
         new Date().toISOString()
 
       const draftDiscovery = {
-        id: crypto.randomUUID(),
+        id: createId(),
         reviewDraftId,
         title: trimmedTitle,
         categoryRef,
@@ -1206,7 +1233,7 @@ export async function createReviewDraftDiscoveryAndDestination(
       )
 
       const destination = {
-        id: crypto.randomUUID(),
+        id: createId(),
         reviewItemId,
         destinationType:
           'discovery' as const,
@@ -1547,7 +1574,7 @@ export async function completeReview(
         }
 
         const permanentId =
-          crypto.randomUUID()
+          createId()
 
         personIdMap.set(
           draftPerson.id,
@@ -1596,7 +1623,7 @@ export async function completeReview(
         }
 
         const permanentId =
-          crypto.randomUUID()
+          createId()
 
         categoryIdMap.set(
           draftCategory.id,
@@ -1644,7 +1671,7 @@ export async function completeReview(
           draftDiscovery.categoryRef
 
         const permanentId =
-          crypto.randomUUID()
+          createId()
 
         discoveryIdMap.set(
           draftDiscovery.id,
@@ -1814,5 +1841,378 @@ export async function getCompletedSessions(
     (a, b) =>
       b.sessionNumber -
       a.sessionNumber
+  )
+}
+/*
+ * CHARACTER
+ */
+
+export async function getCharacter(
+  campaignId: string
+) {
+  return db.characters
+    .where('campaignId')
+    .equals(campaignId)
+    .first()
+}
+
+export async function getOrCreateCharacter(
+  campaignId: string
+) {
+  const existingCharacter =
+    await getCharacter(campaignId)
+
+  if (existingCharacter) {
+    return existingCharacter
+  }
+
+  const campaign =
+    await db.campaigns.get(campaignId)
+
+  if (!campaign) {
+    throw new Error(
+      'Campaign not found.'
+    )
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const character = {
+    id: createId(),
+    campaignId,
+
+    name: '',
+    ancestry: '',
+    characterClass: '',
+
+    level: null,
+    xp: null,
+
+    title: '',
+    alignment: '',
+    background: '',
+    deity: '',
+
+    strength: {
+      score: null,
+      modifier: null,
+    },
+
+    dexterity: {
+      score: null,
+      modifier: null,
+    },
+
+    constitution: {
+      score: null,
+      modifier: null,
+    },
+
+    intelligence: {
+      score: null,
+      modifier: null,
+    },
+
+    wisdom: {
+      score: null,
+      modifier: null,
+    },
+
+    charisma: {
+      score: null,
+      modifier: null,
+    },
+
+    currentHp: null,
+    maxHp: null,
+    armorClass: null,
+
+    attacks: '',
+    talentsAndSpells: '',
+
+    gear: Array(20).fill(''),
+    freeToCarry: '',
+
+    gp: null,
+    sp: null,
+    cp: null,
+
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.characters.add(
+    character
+  )
+
+  return character
+}
+
+export async function updateCharacter(
+  characterId: string,
+  changes: Partial<
+    Omit<
+      import('./database').Character,
+      'id' | 'campaignId' | 'createdAt'
+    >
+  >
+) {
+  const character =
+    await db.characters.get(
+      characterId
+    )
+
+  if (!character) {
+    throw new Error(
+      'Character not found.'
+    )
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  await db.characters.update(
+    characterId,
+    {
+      ...changes,
+      updatedAt: timestamp,
+    }
+  )
+
+  return db.characters.get(
+    characterId
+  )
+}
+
+/*
+ * GOALS
+ */
+
+export async function getGoals(
+  campaignId: string
+) {
+  const goals =
+    await db.goals
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray()
+
+  return goals.sort(
+    (a, b) =>
+      a.createdAt.localeCompare(
+        b.createdAt
+      )
+  )
+}
+
+export async function addGoal(
+  campaignId: string,
+  term:
+    | 'short'
+    | 'mid'
+    | 'long'
+) {
+  const timestamp =
+    new Date().toISOString()
+
+  const goal = {
+    id: createId(),
+    campaignId,
+
+    title: '',
+    term,
+
+    background: '',
+    goal: '',
+    howToMeasure: '',
+    downside: '',
+
+    hasSetback: false,
+    status: 'active' as const,
+
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.goals.add(goal)
+
+  return goal
+}
+
+export async function updateGoal(
+  goalId: string,
+  changes: {
+    title?: string
+    term?:
+      | 'short'
+      | 'mid'
+      | 'long'
+    background?: string
+    goal?: string
+    howToMeasure?: string
+    downside?: string
+    hasSetback?: boolean
+  }
+) {
+  const goal =
+    await db.goals.get(goalId)
+
+  if (!goal) {
+    throw new Error(
+      'Goal not found.'
+    )
+  }
+
+  await db.goals.update(
+    goalId,
+    {
+      ...changes,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.goals.get(goalId)
+}
+
+export async function completeGoal(
+  goalId: string
+) {
+  const goal =
+    await db.goals.get(goalId)
+
+  if (!goal) {
+    throw new Error(
+      'Goal not found.'
+    )
+  }
+
+  await db.goals.update(
+    goalId,
+    {
+      status: 'completed',
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.goals.get(goalId)
+}
+
+export async function reopenGoal(
+  goalId: string
+) {
+  const goal =
+    await db.goals.get(goalId)
+
+  if (!goal) {
+    throw new Error(
+      'Goal not found.'
+    )
+  }
+
+  await db.goals.update(
+    goalId,
+    {
+      status: 'active',
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.goals.get(goalId)
+}
+
+export async function deleteGoal(
+  goalId: string
+) {
+  await db.goals.delete(
+    goalId
+  )
+}
+
+/*
+ * REMINDERS
+ */
+
+export async function getReminders(
+  campaignId: string
+) {
+  const reminders =
+    await db.reminders
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray()
+
+  return reminders.sort(
+    (a, b) =>
+      a.createdAt.localeCompare(
+        b.createdAt
+      )
+  )
+}
+
+export async function addReminder(
+  campaignId: string
+) {
+  const timestamp =
+    new Date().toISOString()
+
+  const reminder = {
+    id: createId(),
+    campaignId,
+
+    title: '',
+    content: '',
+
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.reminders.add(
+    reminder
+  )
+
+  return reminder
+}
+
+export async function updateReminder(
+  reminderId: string,
+  changes: {
+    title?: string
+    content?: string
+  }
+) {
+  const reminder =
+    await db.reminders.get(
+      reminderId
+    )
+
+  if (!reminder) {
+    throw new Error(
+      'Reminder not found.'
+    )
+  }
+
+  await db.reminders.update(
+    reminderId,
+    {
+      ...changes,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.reminders.get(
+    reminderId
+  )
+}
+
+export async function deleteReminder(
+  reminderId: string
+) {
+  await db.reminders.delete(
+    reminderId
   )
 }
