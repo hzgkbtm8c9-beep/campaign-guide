@@ -1,10 +1,17 @@
-import { useEffect, useState } from 'react'
+import {
+  useEffect,
+  useState,
+} from 'react'
 
-import { getPeople } from '../data/repository'
+import {
+  getPeople,
+  getSessionsForEntry,
+} from '../data/repository'
 
 import type {
   Campaign,
   Person,
+  Session,
 } from '../data/database'
 
 export default function PeoplePage({
@@ -15,8 +22,21 @@ export default function PeoplePage({
   const [people, setPeople] =
     useState<Person[]>([])
 
-  const [selectedPersonId, setSelectedPersonId] =
+  const [
+    selectedPersonId,
+    setSelectedPersonId,
+  ] =
     useState<string | undefined>()
+
+  const [
+    relatedSessions,
+    setRelatedSessions,
+  ] = useState<Session[]>([])
+
+  const [
+    showAllSessions,
+    setShowAllSessions,
+  ] = useState(false)
 
   const [isLoading, setIsLoading] =
     useState(true)
@@ -46,6 +66,35 @@ export default function PeoplePage({
         person.id === selectedPersonId
     )
 
+  useEffect(() => {
+    async function loadSessionInfo() {
+      if (!selectedPerson) {
+        setRelatedSessions([])
+        return
+      }
+
+      const sessions =
+        await getSessionsForEntry(
+          campaign.id,
+          'person',
+          selectedPerson.id
+        )
+
+      setRelatedSessions(sessions)
+      setShowAllSessions(false)
+    }
+
+    void loadSessionInfo()
+  }, [
+    campaign.id,
+    selectedPerson,
+  ])
+
+  const visibleSessions =
+    showAllSessions
+      ? relatedSessions
+      : relatedSessions.slice(0, 3)
+
   if (isLoading) {
     return (
       <>
@@ -64,7 +113,7 @@ export default function PeoplePage({
 
   return (
     <>
-      <section className="page left-page">
+      <section className="page left-page distress-d">
         <h1>People</h1>
 
         <p className="subtitle">
@@ -98,7 +147,7 @@ export default function PeoplePage({
         )}
       </section>
 
-      <section className="page right-page">
+      <section className="page right-page distress-a">
         {selectedPerson ? (
           <>
             <h1>{selectedPerson.name}</h1>
@@ -122,6 +171,53 @@ export default function PeoplePage({
               ) : (
                 <p className="empty-message">
                   No notes yet.
+                </p>
+              )}
+            </div>
+
+            <div className="page-section">
+              <h2>Sessions</h2>
+
+              {visibleSessions.length > 0 ? (
+                <>
+                  <div className="entry-session-list">
+                    {visibleSessions.map(
+                      (session) => (
+                        <div
+                          key={session.id}
+                          className="entry-session-item"
+                        >
+                          Session{' '}
+                          {
+                            session.sessionNumber
+                          }
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  {relatedSessions.length >
+                    3 && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() =>
+                        setShowAllSessions(
+                          (current) =>
+                            !current
+                        )
+                      }
+                    >
+                      {showAllSessions
+                        ? 'Show less'
+                        : 'Show all'}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="empty-message">
+                  No associated Sessions
+                  recorded.
                 </p>
               )}
             </div>

@@ -370,7 +370,7 @@ export default function CharacterPage({
 
   return (
     <>
-      <section className="page left-page character-page">
+      <section className="page left-page character-page distress-b">
         <div className="character-save-row">
           <span className="character-save-status">
             {saveStatus === 'saving'
@@ -642,7 +642,7 @@ export default function CharacterPage({
         </div>
       </section>
 
-      <section className="page right-page character-page">
+      <section className="page right-page character-page distress-e">
         <div className="character-right-top">
           <div className="character-section character-section-first">
             <h2>Talents / Spells</h2>

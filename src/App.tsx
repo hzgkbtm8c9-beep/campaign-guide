@@ -6,6 +6,10 @@ import JournalPage from './pages/JournalPage'
 import CharacterPage from './pages/CharacterPage'
 import GoalsPage from './pages/GoalsPage'
 import RemindersPage from './pages/RemindersPage'
+import todayIllustration from './assets/today/Campaign guide image2.png'
+import leatherTexture from './assets/textures/leather-texture.png'
+import paperTexture from './assets/textures/paper-texture.png'
+import distressOverlay from './assets/textures/distress-overlay.png'
 
 import {
   addDiscoveryDestination,
@@ -40,6 +44,8 @@ import {
   startSession,
   updateReviewDestinationText,
   updateReviewItemText,
+  getGoals,
+  getReminders,
 } from './data/repository'
 
 import type {
@@ -55,7 +61,21 @@ import type {
   ReviewDraftPerson,
   ReviewItem,
   Session,
+  Goal,
+  Reminder,
 } from './data/database'
+
+import {
+  Sparkles,
+  Contact,
+  Package,
+  Target,
+  Users,
+  Compass,
+  Feather,
+  Bookmark,
+  BookOpen,
+} from 'lucide-react'
 
 type Section =
   | 'today'
@@ -82,6 +102,18 @@ const sections: {
   { id: 'reminders', label: 'Reminders' },
   { id: 'guide', label: 'Guide' },
 ]
+
+const sectionIcons = {
+  today: Sparkles,
+  character: Contact,
+  ferret: Package,
+  goals: Target,
+  people: Users,
+  discoveries: Compass,
+  journal: Feather,
+  reminders: Bookmark,
+  guide: BookOpen,
+}
 
 function QuickNoteModal({
   session,
@@ -1592,6 +1624,53 @@ function ReviewScreen({
     )
   }
 
+    const visibleCategories =
+    categories.filter(
+      (category, index, allCategories) =>
+        allCategories.findIndex(
+          (candidate) =>
+            candidate.name
+              .trim()
+              .toLowerCase() ===
+            category.name
+              .trim()
+              .toLowerCase()
+        ) === index
+    )
+
+  const visibleDraftCategories =
+    draftCategories.filter(
+      (draftCategory, index, allDraftCategories) => {
+        const normalizedName =
+          draftCategory.name
+            .trim()
+            .toLowerCase()
+
+        const alreadyPermanent =
+          visibleCategories.some(
+            (category) =>
+              category.name
+                .trim()
+                .toLowerCase() ===
+              normalizedName
+          )
+
+        const firstDraftIndex =
+          allDraftCategories.findIndex(
+            (category) =>
+              category.name
+                .trim()
+                .toLowerCase() ===
+              normalizedName
+          )
+
+        return (
+          !alreadyPermanent &&
+          firstDraftIndex === index
+        )
+      }
+    )
+
   return (
     <main className="review-workspace">
       <div className="review-header">
@@ -2206,7 +2285,7 @@ function ReviewScreen({
                           )
                         }
                       >
-                        {categories.map(
+                        {visibleCategories.map(
                           (category) => (
                             <option
                               key={
@@ -2223,7 +2302,7 @@ function ReviewScreen({
                           )
                         )}
 
-                        {draftCategories.map(
+                        {visibleDraftCategories.map(
                           (category) => (
                             <option
                               key={
@@ -2374,7 +2453,9 @@ function TodayPage({
   onEndSession,
   onQuickNoteSaved,
   onOpenReview,
-  onSwitchCampaign
+  onSwitchCampaign,
+  onOpenGoals,
+  onOpenReminders,
 }: {
   campaign: Campaign
   activeSession:
@@ -2391,6 +2472,8 @@ function TodayPage({
   onOpenReview:
     (session: Session) => Promise<void>
   onSwitchCampaign: () => void
+  onOpenGoals: () => void
+  onOpenReminders: () => void
 }) {
   const [
     isStarting,
@@ -2409,6 +2492,41 @@ function TodayPage({
     showQuickNote,
     setShowQuickNote,
   ] = useState(false)
+
+  const [
+    goals,
+    setGoals,
+  ] = useState<Goal[]>([])
+
+  const [
+    reminders,
+    setReminders,
+  ] = useState<Reminder[]>([])
+
+  useEffect(() => {
+    async function loadTodayReferenceData() {
+      const [
+        goalResult,
+        reminderResult,
+      ] = await Promise.all([
+        getGoals(campaign.id),
+        getReminders(campaign.id),
+      ])
+
+      setGoals(
+        goalResult.filter(
+          (goal) =>
+            goal.status === 'active'
+        )
+      )
+
+      setReminders(
+        reminderResult
+      )
+    }
+
+    void loadTodayReferenceData()
+  }, [campaign.id])
 
   async function handleStartSession() {
     try {
@@ -2444,42 +2562,70 @@ function TodayPage({
     }
   }
 
+  const shortGoal =
+    goals.find(
+      (goal) =>
+        goal.term === 'short'
+    )
+
+  const midGoal =
+    goals.find(
+      (goal) =>
+        goal.term === 'mid'
+    )
+
+  const longGoal =
+    goals.find(
+      (goal) =>
+        goal.term === 'long'
+    )
+
+  const todayGoals = [
+    {
+      label: 'Short Term',
+      goal: shortGoal,
+    },
+    {
+      label: 'Mid Term',
+      goal: midGoal,
+    },
+    {
+      label: 'Long Term',
+      goal: longGoal,
+    },
+  ]
+
+  const visibleReminders =
+    reminders.slice(0, 3)
+
   return (
     <>
-      <section className="page left-page">
+      <section className="page left-page today-session-page distress-a">
         <h1>
           Today's Adventure
         </h1>
 
-        <p className="subtitle">
+        <p className="subtitle today-campaign-name">
           {campaign.name}
         </p>
 
-        <button
-          className="switch-campaign-button"
-          onClick={onSwitchCampaign}
-        >
-          Switch Campaign
-        </button>
-
-        <div className="page-section">
+        <div className="page-section today-session-section">
           <h2>Session</h2>
 
           {activeSession ? (
             <>
-              <p>
+              <div className="today-session-status">
                 <strong>
                   Session{' '}
                   {
                     activeSession.sessionNumber
                   }
                 </strong>
-              </p>
 
-              <p>
-                This session is
-                currently active.
-              </p>
+                <span>
+                  Active
+                </span>
+              </div>
 
               <p className="session-note-count">
                 Quick Notes:{' '}
@@ -2487,7 +2633,7 @@ function TodayPage({
               </p>
 
               <button
-                className="primary-button"
+                className="primary-button today-quick-note-button"
                 onClick={() =>
                   setShowQuickNote(
                     true
@@ -2497,17 +2643,26 @@ function TodayPage({
                 Quick Note
               </button>
 
-              <button
-                className="secondary-button"
-                onClick={
-                  handleEndSession
-                }
-                disabled={isEnding}
-              >
-                {isEnding
-                  ? 'Ending…'
-                  : 'End Session'}
-              </button>
+              <div className="today-illustration">
+                <img
+                  src={todayIllustration}
+                  alt=""
+                />
+              </div>
+
+              <div className="today-end-session-area">
+                <button
+                  className="secondary-button today-end-session-button"
+                  onClick={
+                    handleEndSession
+                  }
+                  disabled={isEnding}
+                >
+                  {isEnding
+                    ? 'Ending…'
+                    : 'End Session'}
+                </button>
+              </div>
             </>
           ) : openReviews.length >
             0 ? (
@@ -2557,19 +2712,21 @@ function TodayPage({
                 )}
               </div>
 
-              <button
-                className="primary-button start-with-reviews"
-                onClick={
-                  handleStartSession
-                }
-                disabled={
-                  isStarting
-                }
-              >
-                {isStarting
-                  ? 'Starting…'
-                  : 'Start New Session'}
-              </button>
+              <div className="today-new-session-area">
+                <button
+                  className="primary-button"
+                  onClick={
+                    handleStartSession
+                  }
+                  disabled={
+                    isStarting
+                  }
+                >
+                  {isStarting
+                    ? 'Starting…'
+                    : 'Start New Session'}
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -2602,23 +2759,108 @@ function TodayPage({
         </div>
       </section>
 
-      <section className="page right-page">
-        <div className="page-section">
-          <h2>Goals</h2>
+      <section className="page right-page today-reference-page distress-d">
+        <div className="page-section today-goals-section">
+          <div className="today-section-heading">
+            <h2>
+              Active Goals
+            </h2>
 
-          <p className="empty-message">
-            Your active goals will
-            appear here.
-          </p>
+            <button
+              type="button"
+              className="text-button"
+              onClick={onOpenGoals}
+            >
+              View all
+            </button>
+          </div>
+
+          <div className="today-goal-list">
+            {todayGoals.map(
+              ({
+                label,
+                goal,
+              }) => (
+                <div
+                  className="today-goal-item"
+                  key={label}
+                >
+                  <strong>
+                    {label}
+                  </strong>
+
+                  {goal ? (
+                    <span>
+                      {goal.title ||
+                        'Untitled Goal'}
+                    </span>
+                  ) : (
+                    <span className="empty-message">
+                      No active goal.
+                    </span>
+                  )}
+                </div>
+              )
+            )}
+          </div>
         </div>
 
-        <div className="page-section">
-          <h2>Reminders</h2>
+        <div className="page-section today-reminders-section">
+          <div className="today-section-heading">
+            <h2>
+              Reminders
+            </h2>
 
-          <p className="empty-message">
-            Pinned reminders will
-            appear here.
-          </p>
+            <button
+              type="button"
+              className="text-button"
+              onClick={
+                onOpenReminders
+              }
+            >
+              View all
+            </button>
+          </div>
+
+          {visibleReminders.length >
+          0 ? (
+            <div className="today-reminder-list">
+              {visibleReminders.map(
+                (reminder) => (
+                  <div
+                    className="today-reminder-item"
+                    key={reminder.id}
+                  >
+                    <strong>
+                      {reminder.title ||
+                        'Untitled Reminder'}
+                    </strong>
+
+                    {reminder.todaySummary && (
+                      <span>
+                        {reminder.todaySummary}
+                      </span>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          ) : (
+            <p className="empty-message">
+              No Reminders yet.
+            </p>
+          )}
+        </div>
+
+        <div className="today-switch-campaign">
+          <button
+            className="switch-campaign-button"
+            onClick={
+              onSwitchCampaign
+            }
+          >
+            Switch Campaign
+          </button>
         </div>
       </section>
 
@@ -3132,6 +3374,9 @@ function CampaignApp({
     reviewSession &&
     reviewDraft
   ) {
+
+
+    
     return (
       <ReviewScreen
         session={
@@ -3172,34 +3417,46 @@ function CampaignApp({
     )?.label ?? 'Today'
 
   return (
-    <div className="app">
+    <div
+      className="app"
+      style={{
+        '--leather-texture': `url(${leatherTexture})`,
+        '--paper-texture': `url(${paperTexture})`,
+        '--distress-overlay': `url(${distressOverlay})`,
+      } as React.CSSProperties}
+    >
       <nav className="sidebar">
-        <div className="app-mark">
-          ✦
-        </div>
+        {sections.map((section) => {
+          const Icon =
+            sectionIcons[
+              section.id as keyof typeof sectionIcons
+            ]
 
-        {sections.map(
-          (section) => (
+          return (
             <button
-              key={
-                section.id
-              }
+              key={section.id}
               className={
-                activeSection ===
-                section.id
+                activeSection === section.id
                   ? 'nav-item active'
                   : 'nav-item'
               }
               onClick={() =>
-                setActiveSection(
-                  section.id
-                )
+                setActiveSection(section.id)
               }
             >
-              {section.label}
+              {Icon && (
+                <Icon
+                  className="nav-icon"
+                  aria-hidden="true"
+                />
+              )}
+
+              <span className="nav-label">
+                {section.label}
+              </span>
             </button>
           )
-        )}
+        })}
       </nav>
 
       <main className="book-area">
@@ -3220,6 +3477,12 @@ function CampaignApp({
                 ])
               }
               onOpenReview={handleOpenReview}
+                onOpenGoals={() =>
+                  setActiveSection('goals')
+                }
+                onOpenReminders={() =>
+                  setActiveSection('reminders')
+                }
             />
           ) : activeSection === 'character' ? (
             <CharacterPage

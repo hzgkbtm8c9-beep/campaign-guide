@@ -1,14 +1,20 @@
-import { useEffect, useState } from 'react'
+import {
+  useEffect,
+  useState,
+} from 'react'
 
 import {
   getDiscoveries,
   getDiscoveryCategories,
+  getSession,
+  getSessionsForEntry,
 } from '../data/repository'
 
 import type {
   Campaign,
   Discovery,
   DiscoveryCategory,
+  Session,
 } from '../data/database'
 
 export default function DiscoveriesPage({
@@ -30,6 +36,21 @@ export default function DiscoveriesPage({
     selectedDiscoveryId,
     setSelectedDiscoveryId,
   ] = useState<string | undefined>()
+
+  const [
+    relatedSessions,
+    setRelatedSessions,
+  ] = useState<Session[]>([])
+
+  const [
+    firstDiscoveredSession,
+    setFirstDiscoveredSession,
+  ] = useState<Session | undefined>()
+
+  const [
+    showAllSessions,
+    setShowAllSessions,
+  ] = useState(false)
 
   const [
     isLoading,
@@ -77,6 +98,89 @@ export default function DiscoveriesPage({
         selectedDiscoveryId
     )
 
+  useEffect(() => {
+    async function loadSessionInfo() {
+      if (!selectedDiscovery) {
+        setRelatedSessions([])
+        setFirstDiscoveredSession(
+          undefined
+        )
+        return
+      }
+
+      const contributionSessions =
+        await getSessionsForEntry(
+          campaign.id,
+          'discovery',
+          selectedDiscovery.id
+        )
+
+      let discoveredSession:
+        | Session
+        | undefined
+
+      if (
+        selectedDiscovery
+          .discoveredInSessionId
+      ) {
+        discoveredSession =
+          contributionSessions.find(
+            (session) =>
+              session.id ===
+              selectedDiscovery
+                .discoveredInSessionId
+          )
+
+        if (!discoveredSession) {
+          discoveredSession =
+            await getSession(
+              selectedDiscovery
+                .discoveredInSessionId
+            )
+        }
+      }
+
+      setFirstDiscoveredSession(
+        discoveredSession
+      )
+
+      const combinedSessions =
+        discoveredSession
+          ? [
+              discoveredSession,
+              ...contributionSessions,
+            ]
+          : contributionSessions
+
+      const uniqueSessions =
+        Array.from(
+          new Map(
+            combinedSessions.map(
+              (session) => [
+                session.id,
+                session,
+              ]
+            )
+          ).values()
+        ).sort(
+          (a, b) =>
+            b.sessionNumber -
+            a.sessionNumber
+        )
+
+      setRelatedSessions(
+        uniqueSessions
+      )
+
+      setShowAllSessions(false)
+    }
+
+    void loadSessionInfo()
+  }, [
+    campaign.id,
+    selectedDiscovery,
+  ])
+
   function getCategoryName(
     categoryId: string
   ) {
@@ -88,6 +192,11 @@ export default function DiscoveriesPage({
       'Unknown Category'
     )
   }
+
+  const visibleSessions =
+    showAllSessions
+      ? relatedSessions
+      : relatedSessions.slice(0, 3)
 
   if (isLoading) {
     return (
@@ -107,7 +216,7 @@ export default function DiscoveriesPage({
 
   return (
     <>
-      <section className="page left-page">
+      <section className="page left-page distress-e">
         <h1>Discoveries</h1>
 
         <p className="subtitle">
@@ -154,7 +263,7 @@ export default function DiscoveriesPage({
         )}
       </section>
 
-      <section className="page right-page">
+      <section className="page right-page distress-b">
         {selectedDiscovery ? (
           <>
             <h1>
@@ -185,19 +294,68 @@ export default function DiscoveriesPage({
 
             <div className="page-section">
               <h2>
-                Discovery Source
+                First Discovered
               </h2>
 
-              {selectedDiscovery
-                .discoveredInSessionId ? (
+              {firstDiscoveredSession ? (
                 <p>
-                  Added during a
-                  completed Session
-                  Review.
+                  Session{' '}
+                  {
+                    firstDiscoveredSession
+                      .sessionNumber
+                  }
                 </p>
               ) : (
                 <p className="empty-message">
                   No Session source
+                  recorded.
+                </p>
+              )}
+            </div>
+
+            <div className="page-section">
+              <h2>Sessions</h2>
+
+              {visibleSessions.length >
+              0 ? (
+                <>
+                  <div className="entry-session-list">
+                    {visibleSessions.map(
+                      (session) => (
+                        <div
+                          key={session.id}
+                          className="entry-session-item"
+                        >
+                          Session{' '}
+                          {
+                            session.sessionNumber
+                          }
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  {relatedSessions.length >
+                    3 && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() =>
+                        setShowAllSessions(
+                          (current) =>
+                            !current
+                        )
+                      }
+                    >
+                      {showAllSessions
+                        ? 'Show less'
+                        : 'Show all'}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="empty-message">
+                  No associated Sessions
                   recorded.
                 </p>
               )}

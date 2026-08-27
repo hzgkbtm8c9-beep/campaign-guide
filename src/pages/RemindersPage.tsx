@@ -144,6 +144,8 @@ export default function RemindersPage({
               {
                 title:
                   selectedReminder.title,
+                todaySummary:
+                  selectedReminder.todaySummary,
                 content:
                   selectedReminder.content,
               }
@@ -174,6 +176,7 @@ export default function RemindersPage({
   }, [
     selectedReminder?.id,
     selectedReminder?.title,
+    selectedReminder?.todaySummary,
     selectedReminder?.content,
   ])
 
@@ -239,7 +242,7 @@ export default function RemindersPage({
 
   return (
     <>
-      <section className="page left-page reminders-page">
+      <section className="page left-page reminders-page distress-b">
         <div className="reminders-heading">
           <div>
             <h1>Reminders</h1>
@@ -300,7 +303,7 @@ export default function RemindersPage({
         )}
       </section>
 
-      <section className="page right-page reminders-page">
+      <section className="page right-page reminders-page distress-d">
         {selectedReminder ? (
           <>
             <div className="reminder-editor-heading">
@@ -320,27 +323,45 @@ export default function RemindersPage({
                 </div>
 
                 <div className="reminder-editor">
-                <label className="character-field reminder-content-field">
-                <span>
-                  Content
-                </span>
+                  <label className="character-field reminder-summary-field">
+                    <span>
+                      Today Summary
+                    </span>
 
-                <textarea
-                  value={
-                    selectedReminder.content
-                  }
-                  onChange={(event) =>
-                    changeSelectedReminder(
-                      {
-                        content:
-                          event.target
-                            .value,
+                    <input
+                      value={
+                        selectedReminder.todaySummary
                       }
-                    )
-                  }
-                  placeholder="Write anything you want to keep handy during play…"
-                />
-              </label>
+                      onChange={(event) =>
+                        changeSelectedReminder({
+                          todaySummary:
+                            event.target.value,
+                        })
+                      }
+                      placeholder="Short phrase shown on Today"
+                    />
+                  </label>
+
+                  <label className="character-field reminder-content-field">
+                    <span>
+                      Notes
+                    </span>
+
+                    <textarea
+                      value={
+                        selectedReminder.content
+                      }
+                      onChange={(event) =>
+                        changeSelectedReminder(
+                          {
+                            content:
+                              event.target.value,
+                          }
+                        )
+                      }
+                      placeholder="Write the full reminder details here…"
+                    />
+                  </label>
 
               <button
                 className="reminder-delete-button"

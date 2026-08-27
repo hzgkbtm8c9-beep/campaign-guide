@@ -1438,6 +1438,7 @@ export async function completeReview(
       db.people,
       db.discoveryCategories,
       db.discoveries,
+      db.noteContributions,
     ],
     async () => {
       const reviewDraft =
@@ -1731,13 +1732,16 @@ export async function completeReview(
             )
 
           if (person) {
+            const contributionText =
+              destination.text.trim()
+
             const nextNotes =
               [
                 person.notes.trim(),
-                destination.text.trim(),
+                contributionText,
               ]
                 .filter(Boolean)
-                .join('\n\n')
+                .join('\n')
 
             await db.people.update(
               permanentPersonId,
@@ -1746,6 +1750,21 @@ export async function completeReview(
                 updatedAt: timestamp,
               }
             )
+
+            if (contributionText) {
+              await db.noteContributions.add({
+                id: createId(),
+                campaignId:
+                  reviewDraft.campaignId,
+                targetType: 'person',
+                targetId:
+                  permanentPersonId,
+                sessionId: session.id,
+                text: contributionText,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              })
+            }
           }
         }
 
@@ -1766,13 +1785,16 @@ export async function completeReview(
             )
 
           if (discovery) {
+            const contributionText =
+              destination.text.trim()
+
             const nextNotes =
               [
                 discovery.notes.trim(),
-                destination.text.trim(),
+                contributionText,
               ]
                 .filter(Boolean)
-                .join('\n\n')
+                .join('\n')
 
             await db.discoveries.update(
               permanentDiscoveryId,
@@ -1781,6 +1803,21 @@ export async function completeReview(
                 updatedAt: timestamp,
               }
             )
+
+            if (contributionText) {
+              await db.noteContributions.add({
+                id: createId(),
+                campaignId:
+                  reviewDraft.campaignId,
+                targetType: 'discovery',
+                targetId:
+                  permanentDiscoveryId,
+                sessionId: session.id,
+                text: contributionText,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              })
+            }
           }
         }
       }
@@ -1822,6 +1859,73 @@ export async function completeReview(
 /*
  * COMPLETED SESSIONS
  */
+
+export async function getSession(
+  sessionId: string
+) {
+  return db.sessions.get(sessionId)
+}
+
+export async function getSessionsForEntry(
+  campaignId: string,
+  targetType: 'person' | 'discovery',
+  targetId: string
+) {
+  const contributions =
+    await db.noteContributions
+      .where('targetId')
+      .equals(targetId)
+      .filter(
+        (contribution) =>
+          contribution.campaignId ===
+            campaignId &&
+          contribution.targetType ===
+            targetType &&
+          Boolean(
+            contribution.sessionId
+          )
+      )
+      .toArray()
+
+  const sessionIds =
+    Array.from(
+      new Set(
+        contributions
+          .map(
+            (contribution) =>
+              contribution.sessionId
+          )
+          .filter(
+            (
+              sessionId
+            ): sessionId is string =>
+              Boolean(sessionId)
+          )
+      )
+    )
+
+  if (sessionIds.length === 0) {
+    return []
+  }
+
+  const sessions =
+    await db.sessions
+      .where('id')
+      .anyOf(sessionIds)
+      .toArray()
+
+  return sessions
+    .filter(
+      (session) =>
+        session.campaignId ===
+        campaignId
+    )
+    .sort(
+      (a, b) =>
+        b.sessionNumber -
+        a.sessionNumber
+    )
+}
 
 export async function getCompletedSessions(
   campaignId: string
@@ -2164,6 +2268,7 @@ export async function addReminder(
     campaignId,
 
     title: '',
+    todaySummary: '',
     content: '',
 
     createdAt: timestamp,
@@ -2181,6 +2286,7 @@ export async function updateReminder(
   reminderId: string,
   changes: {
     title?: string
+    todaySummary?: string
     content?: string
   }
 ) {

@@ -75,7 +75,7 @@ export default function JournalPage({
 
   return (
     <>
-      <section className="page left-page">
+      <section className="page left-page distress-f">
         <h1>Journal</h1>
 
         <p className="subtitle">
@@ -121,7 +121,7 @@ export default function JournalPage({
         )}
       </section>
 
-      <section className="page right-page">
+      <section className="page right-page distress-c">
         {selectedSession ? (
           <>
             <h1>

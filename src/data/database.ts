@@ -97,6 +97,7 @@ export interface Reminder {
   campaignId: string
 
   title: string
+  todaySummary: string
   content: string
 
   createdAt: string
@@ -214,6 +215,25 @@ export interface ReviewDestination {
   updatedAt: string
 }
 
+export type NoteContributionTargetType =
+  | 'person'
+  | 'discovery'
+
+export interface NoteContribution {
+  id: string
+
+  campaignId: string
+  targetType: NoteContributionTargetType
+  targetId: string
+
+  sessionId?: string
+
+  text: string
+
+  createdAt: string
+  updatedAt: string
+}
+
 class CampaignGuideDatabase extends Dexie {
   campaigns!: EntityTable<Campaign, 'id'>
 
@@ -266,6 +286,11 @@ class CampaignGuideDatabase extends Dexie {
 
   reviewDestinations!: EntityTable<
     ReviewDestination,
+    'id'
+  >
+
+  noteContributions!: EntityTable<
+    NoteContribution,
     'id'
   >
 
@@ -651,6 +676,56 @@ class CampaignGuideDatabase extends Dexie {
 
       reviewDestinations:
         'id, reviewItemId, destinationType, targetId',
+    })
+
+        this.version(15).stores({
+      campaigns:
+        'id, name, createdAt',
+
+      characters:
+        'id, campaignId, name, updatedAt',
+
+      goals:
+        'id, campaignId, term, status, hasSetback, updatedAt',
+
+      reminders:
+        'id, campaignId, updatedAt',
+
+      sessions:
+        'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+      quickNotes:
+        'id, campaignId, sessionId, capturedAt',
+
+      people:
+        'id, campaignId, name, createdAt',
+
+      discoveryCategories:
+        'id, campaignId, name, sortPosition',
+
+      discoveries:
+        'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+      reviewDrafts:
+        'id, campaignId, sessionId, status, currentReviewItemId',
+
+      reviewItems:
+        'id, reviewDraftId, quickNoteId',
+
+      reviewDraftPeople:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftCategories:
+        'id, reviewDraftId, name, createdAt',
+
+      reviewDraftDiscoveries:
+        'id, reviewDraftId, title, categoryRef, createdAt',
+
+      reviewDestinations:
+        'id, reviewItemId, destinationType, targetId',
+
+      noteContributions:
+        'id, campaignId, targetType, targetId, sessionId, createdAt',
     })
   }
 }

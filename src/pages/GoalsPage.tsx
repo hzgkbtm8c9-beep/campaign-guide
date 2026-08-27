@@ -353,7 +353,7 @@ export default function GoalsPage({
 
   return (
     <>
-      <section className="page left-page goals-page">
+      <section className="page left-page goals-page distress-c">
         <div className="goals-heading">
           <div>
             <h1>Goals</h1>
@@ -493,7 +493,7 @@ export default function GoalsPage({
         )}
       </section>
 
-      <section className="page right-page goals-page">
+      <section className="page right-page goals-page distress-f">
         {selectedGoal ? (
           <>
             <div className="goal-editor-heading">
@@ -572,7 +572,8 @@ export default function GoalsPage({
                   </select>
                 </label>
               </div>
-
+              
+              {/*
               <label className="character-field goal-notes-field">
                 <span>
                   Background
@@ -594,7 +595,8 @@ export default function GoalsPage({
                   placeholder="Why does this matter? What led to this goal?"
                 />
               </label>
-
+              */}
+              
               <label className="character-field goal-notes-field">
                 <span>
                   Goal
