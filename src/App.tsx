@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import PeoplePage from './pages/PeoplePage'
 import DiscoveriesPage from './pages/DiscoveriesPage'
@@ -42,6 +42,7 @@ import {
   setReviewItemDiscarded,
   startOrResumeReview,
   startSession,
+  updateSessionTitle,
   updateReviewDestinationText,
   updateReviewItemText,
   getGoals,
@@ -87,6 +88,12 @@ type Section =
   | 'journal'
   | 'reminders'
   | 'guide'
+
+const textureVariables = {
+  '--leather-texture': `url(${leatherTexture})`,
+  '--paper-texture': `url(${paperTexture})`,
+  '--distress-overlay': `url(${distressOverlay})`,
+} as React.CSSProperties
 
 const sections: {
   id: Section
@@ -1377,7 +1384,10 @@ function ReviewScreen({
     !sourceNote
   ) {
     return (
-      <main className="review-workspace">
+      <main
+        className="review-workspace"
+        style={textureVariables}
+      >
         <button
           className="review-back-button"
           onClick={onClose}
@@ -1400,7 +1410,10 @@ function ReviewScreen({
 
   if (showSummary) {
     return (
-      <main className="review-workspace">
+      <main
+        className="review-workspace"
+        style={textureVariables}
+      >
         <div className="review-header">
           <button
             className="review-back-button"
@@ -1672,7 +1685,10 @@ function ReviewScreen({
     )
 
   return (
-    <main className="review-workspace">
+    <main
+      className="review-workspace"
+      style={textureVariables}
+    >
       <div className="review-header">
         <button
           className="review-back-button"
@@ -1700,15 +1716,6 @@ function ReviewScreen({
             {resolvedCount} of{' '}
             {items.length}
           </span>
-
-          <button
-            className="review-button"
-            onClick={() =>
-              void handleOpenSummary()
-            }
-          >
-            View Summary
-          </button>
         </div>
       </div>
 
@@ -1743,10 +1750,11 @@ function ReviewScreen({
 
         <div className="review-block">
           <h2>
-            Working Text
+            Review Note
           </h2>
 
           <textarea
+            className="review-note-textarea"
             value={
               currentItem.workingText
             }
@@ -1758,10 +1766,9 @@ function ReviewScreen({
           />
 
           <p className="review-help">
-            Changes are saved
-            automatically to the Review
-            workspace. The original Quick
-            Note remains unchanged.
+            Edit this note before choosing
+            where it should be saved.
+            Changes are saved automatically.
           </p>
         </div>
 
@@ -2439,6 +2446,16 @@ function ReviewScreen({
             Next
           </button>
         </div>
+        <div className="review-summary-action">
+          <button
+            className="review-button"
+            onClick={() =>
+              void handleOpenSummary()
+            }
+          >
+            View Summary
+          </button>
+        </div>
       </div>
     </main>
   )
@@ -2451,6 +2468,7 @@ function TodayPage({
   openReviews,
   onStartSession,
   onEndSession,
+  onSessionTitleChange,
   onQuickNoteSaved,
   onOpenReview,
   onSwitchCampaign,
@@ -2465,6 +2483,8 @@ function TodayPage({
   openReviews: Session[]
   onStartSession:
     () => Promise<void>
+  onSessionTitleChange:
+  (title: string) => Promise<void>
   onEndSession:
     () => Promise<void>
   onQuickNoteSaved:
@@ -2612,20 +2632,37 @@ function TodayPage({
         <div className="page-section today-session-section">
           <h2>Session</h2>
 
+        <div className="today-illustration">
+          <img
+            src={todayIllustration}
+            alt=""
+          />
+        </div>
+
           {activeSession ? (
             <>
               <div className="today-session-status">
                 <strong>
                   Session{' '}
-                  {
-                    activeSession.sessionNumber
-                  }
+                  {activeSession.sessionNumber}
                 </strong>
 
                 <span>
                   Active
                 </span>
               </div>
+
+              <input
+                className="today-session-title"
+                type="text"
+                value={activeSession.title}
+                onChange={(event) =>
+                  void onSessionTitleChange(
+                    event.target.value
+                  )
+                }
+                placeholder="Session title"
+              />
 
               <p className="session-note-count">
                 Quick Notes:{' '}
@@ -2642,13 +2679,6 @@ function TodayPage({
               >
                 Quick Note
               </button>
-
-              <div className="today-illustration">
-                <img
-                  src={todayIllustration}
-                  alt=""
-                />
-              </div>
 
               <div className="today-end-session-area">
                 <button
@@ -3117,6 +3147,56 @@ function CampaignApp({
       'today'
     )
 
+  const bookWrapperRef =
+    useRef<HTMLDivElement>(null)
+
+  const [bookScale, setBookScale] =
+    useState(1)
+
+  useEffect(() => {
+    const updateScale = () => {
+      const designWidth = 1497
+      const designHeight = 850
+
+      const horizontalMargin = 40
+      const verticalMargin = 5
+
+      const widthScale =
+        (window.innerWidth -
+          horizontalMargin) /
+        designWidth
+
+      const heightScale =
+        (window.innerHeight -
+          verticalMargin) /
+        designHeight
+
+      const fitScale = Math.min(
+        widthScale,
+        heightScale,
+        1
+      )
+
+      const nextScale = fitScale * 0.9999   
+
+      setBookScale(nextScale)
+    }
+
+    updateScale()
+
+    window.addEventListener(
+      'resize',
+      updateScale
+    )
+
+    return () => {
+      window.removeEventListener(
+        'resize',
+        updateScale
+      )
+    }
+  }, [])
+
   const [
     activeSession,
     setActiveSession,
@@ -3234,6 +3314,26 @@ function CampaignApp({
 
     setQuickNotes([])
     setOpenReviews([])
+  }
+
+  async function handleSessionTitleChange(
+    title: string
+  ) {
+    if (!activeSession) {
+      return
+    }
+
+    const updatedSession =
+      await updateSessionTitle(
+        activeSession.id,
+        title
+      )
+
+    if (updatedSession) {
+      setActiveSession(
+        updatedSession
+      )
+    }
   }
 
   async function handleEndSession() {
@@ -3418,104 +3518,117 @@ function CampaignApp({
 
   return (
     <div
-      className="app"
-      style={{
-        '--leather-texture': `url(${leatherTexture})`,
-        '--paper-texture': `url(${paperTexture})`,
-        '--distress-overlay': `url(${distressOverlay})`,
-      } as React.CSSProperties}
-    >
-      <nav className="sidebar">
-        {sections.map((section) => {
-          const Icon =
-            sectionIcons[
-              section.id as keyof typeof sectionIcons
-            ]
+  className="app"
+  style={textureVariables}
+>
+  <div
+  className="book-scale-space"
+  style={{
+    width: `${1497 * bookScale}px`,
+    height: `${850 * bookScale}px`,
+  }}
+>
+  <div
+    ref={bookWrapperRef}
+    className="book-scale-wrapper"
+    style={{
+      transform: `scale(${bookScale})`,
+    }}
+  >
+    <nav className="sidebar">
+      {sections.map((section) => {
+        const Icon =
+          sectionIcons[
+            section.id as keyof typeof sectionIcons
+          ]
 
-          return (
-            <button
-              key={section.id}
-              className={
-                activeSection === section.id
-                  ? 'nav-item active'
-                  : 'nav-item'
-              }
-              onClick={() =>
-                setActiveSection(section.id)
-              }
-            >
-              {Icon && (
-                <Icon
-                  className="nav-icon"
-                  aria-hidden="true"
-                />
-              )}
+        return (
+          <button
+            key={section.id}
+            className={
+              activeSection === section.id
+                ? 'nav-item active'
+                : 'nav-item'
+            }
+            onClick={() =>
+              setActiveSection(section.id)
+            }
+          >
+            {Icon && (
+              <Icon
+                className="nav-icon"
+                aria-hidden="true"
+              />
+            )}
 
-              <span className="nav-label">
-                {section.label}
-              </span>
-            </button>
-          )
-        })}
-      </nav>
+            <span className="nav-label">
+              {section.label}
+            </span>
+          </button>
+        )
+      })}
+    </nav>
 
-      <main className="book-area">
-        <div className="book">
-          {activeSection === 'today' ? (
-            <TodayPage
-              campaign={campaign}
-              onSwitchCampaign={onSwitchCampaign}
-              activeSession={activeSession}
-              quickNotes={quickNotes}
-              openReviews={openReviews}
-              onStartSession={handleStartSession}
-              onEndSession={handleEndSession}
-              onQuickNoteSaved={(quickNote) =>
-                setQuickNotes((current) => [
-                  ...current,
-                  quickNote,
-                ])
-              }
-              onOpenReview={handleOpenReview}
-                onOpenGoals={() =>
-                  setActiveSection('goals')
-                }
-                onOpenReminders={() =>
-                  setActiveSection('reminders')
-                }
-            />
-          ) : activeSection === 'character' ? (
-            <CharacterPage
-              campaign={campaign}
-            />
-          ) : activeSection === 'goals' ? (
-            <GoalsPage
-              campaign={campaign}
-            />
-          ) : activeSection === 'people' ? (
-            <PeoplePage
-              campaign={campaign}
-            />
-          ) : activeSection === 'discoveries' ? (
-            <DiscoveriesPage
-              campaign={campaign}
-            />
-          ) : activeSection === 'journal' ? (
-            <JournalPage
-              campaign={campaign}
-            />
-          ) : activeSection === 'reminders' ? (
-            <RemindersPage
-              campaign={campaign}
-            />
-          ) : (
-            <PlaceholderPage
-              title={activeLabel}
-            />
-          )}
-        </div>
-      </main>
-    </div>
+    <main className="book-area">
+      <div className="book">
+        {activeSection === 'today' ? (
+          <TodayPage
+            campaign={campaign}
+            onSwitchCampaign={onSwitchCampaign}
+            activeSession={activeSession}
+            quickNotes={quickNotes}
+            openReviews={openReviews}
+            onStartSession={handleStartSession}
+            onEndSession={handleEndSession}
+            onSessionTitleChange={handleSessionTitleChange}
+            onQuickNoteSaved={(quickNote) =>
+              setQuickNotes((current) => [
+                ...current,
+                quickNote,
+              ])
+            }
+            onOpenReview={handleOpenReview}
+            onOpenGoals={() =>
+              setActiveSection('goals')
+            }
+            onOpenReminders={() =>
+              setActiveSection('reminders')
+            }
+          />
+        ) : activeSection === 'character' ? (
+          <CharacterPage
+            campaign={campaign}
+          />
+        ) : activeSection === 'goals' ? (
+          <GoalsPage
+            campaign={campaign}
+          />
+        ) : activeSection === 'people' ? (
+          <PeoplePage
+            campaign={campaign}
+          />
+        ) : activeSection === 'discoveries' ? (
+          <DiscoveriesPage
+            campaign={campaign}
+          />
+        ) : activeSection === 'journal' ? (
+          <JournalPage
+            campaign={campaign}
+          />
+        ) : activeSection === 'reminders' ? (
+          <RemindersPage
+            campaign={campaign}
+          />
+        ) : (
+          <PlaceholderPage
+            title={activeLabel}
+          />
+        )}
+      </div>
+    </main>
+  </div>
+</div>
+</div>
   )
 }
 

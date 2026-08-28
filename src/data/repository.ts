@@ -234,10 +234,45 @@ export async function getReviewDraftForSession(
 export async function getReviewItems(
   reviewDraftId: string
 ) {
-  return db.reviewItems
-    .where('reviewDraftId')
-    .equals(reviewDraftId)
-    .toArray()
+  const reviewDraft =
+    await db.reviewDrafts.get(
+      reviewDraftId
+    )
+
+  if (!reviewDraft) {
+    return []
+  }
+
+  const [
+    reviewItems,
+    quickNotes,
+  ] = await Promise.all([
+    db.reviewItems
+      .where('reviewDraftId')
+      .equals(reviewDraftId)
+      .toArray(),
+
+    getQuickNotesForSession(
+      reviewDraft.sessionId
+    ),
+  ])
+
+  const noteOrder = new Map(
+    quickNotes.map(
+      (quickNote, index) => [
+        quickNote.id,
+        index,
+      ]
+    )
+  )
+
+  return reviewItems.sort(
+    (a, b) =>
+      (noteOrder.get(a.quickNoteId) ??
+        Number.MAX_SAFE_INTEGER) -
+      (noteOrder.get(b.quickNoteId) ??
+        Number.MAX_SAFE_INTEGER)
+  )
 }
 
 export async function startOrResumeReview(
@@ -1925,6 +1960,31 @@ export async function getSessionsForEntry(
         b.sessionNumber -
         a.sessionNumber
     )
+}
+
+export async function updateSessionTitle(
+  sessionId: string,
+  title: string
+) {
+  const session =
+    await db.sessions.get(sessionId)
+
+  if (!session) {
+    throw new Error(
+      'Session not found.'
+    )
+  }
+
+  await db.sessions.update(
+    sessionId,
+    {
+      title,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.sessions.get(sessionId)
 }
 
 export async function getCompletedSessions(
