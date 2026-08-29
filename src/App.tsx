@@ -2993,9 +2993,16 @@ function PlaceholderPage({
 
 function CampaignSetup({
   onCreated,
+  onImportCampaign,
+  onCancel,
 }: {
   onCreated:
     (campaign: Campaign) => void
+
+  onImportCampaign:
+    (file: File) => Promise<void>
+
+  onCancel: () => void
 }) {
   const [name, setName] =
     useState('')
@@ -3096,6 +3103,36 @@ function CampaignSetup({
               ? 'Creating…'
               : 'Create Campaign'}
           </button>
+          <label className="setup-import-button">
+            Import Existing Campaign
+
+            <input
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(event) => {
+                const file =
+                  event.target.files?.[0]
+
+                if (!file) {
+                  return
+                }
+
+                void onImportCampaign(
+                  file
+                )
+
+                event.target.value = ''
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="setup-cancel-button"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </main>
@@ -3106,17 +3143,20 @@ function CampaignChooser({
   campaigns,
   onSelect,
   onCreated,
+  onImportCampaign,
 }: {
   campaigns: Campaign[]
-  onSelect: (campaign: Campaign) => void
-  onCreated: (campaign: Campaign) => void
+  onSelect:
+    (campaign: Campaign) => void
+  onCreated:
+    (campaign: Campaign) => void
+  onImportCampaign:
+    (file: File) => Promise<void>
 }) {
   const [
     showCreate,
     setShowCreate,
-  ] = useState(
-    campaigns.length === 0
-  )
+  ] = useState(false)
 
   if (showCreate) {
     return (
@@ -3124,6 +3164,12 @@ function CampaignChooser({
         onCreated={(campaign) => {
           onCreated(campaign)
         }}
+        onImportCampaign={
+          onImportCampaign
+        }
+        onCancel={() =>
+          setShowCreate(false)
+        }
       />
     )
   }
@@ -3168,6 +3214,28 @@ function CampaignChooser({
             Create New Campaign
           </button>
 
+          <label className="setup-import-button">
+            Import Existing Campaign
+
+            <input
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(event) => {
+                const file =
+                  event.target.files?.[0]
+
+                if (!file) {
+                  return
+                }
+
+                void onImportCampaign(file)
+
+                event.target.value = ''
+              }}
+            />
+          </label>
+
           <div className="setup-illustration">
             <img
               src={todayIllustration}
@@ -3183,9 +3251,12 @@ function CampaignChooser({
 function CampaignApp({
   campaign,
   onSwitchCampaign,
+  onImportCampaign,
 }: {
   campaign: Campaign
   onSwitchCampaign: () => void
+  onImportCampaign:
+    (file: File) => Promise<void>
 }) {
   const [
     activeSection,
@@ -3479,67 +3550,6 @@ function CampaignApp({
     }
   }
 
-  async function handleImportCampaign(
-    file: File
-  ) {
-    try {
-      const text =
-        await file.text()
-
-      const backup =
-        JSON.parse(text)
-
-      const result =
-        await importCampaign(
-          backup
-        )
-
-      if (
-        result.status ===
-        'campaign_exists'
-      ) {
-        const shouldReplace =
-          window.confirm(
-            `Campaign "${result.campaign.name}" already exists on this device.\n\nReplace the existing campaign with this backup?\n\nThis will remove the locally stored version and restore the imported version.`
-          )
-
-        if (!shouldReplace) {
-          return
-        }
-
-        const restoredCampaign =
-          await replaceCampaignFromBackup(
-            backup
-          )
-
-        alert(
-          `Campaign "${restoredCampaign.name}" restored successfully.`
-        )
-
-        onSwitchCampaign()
-
-        return
-      }
-
-      alert(
-        `Campaign "${result.campaign.name}" imported successfully.`
-      )
-
-      onSwitchCampaign()
-    } catch (error) {
-      console.error(
-        'Campaign import failed.',
-        error
-      )
-
-      alert(
-        error instanceof Error
-          ? error.message
-          : 'Campaign import failed.'
-      )
-    }
-  }
-
   async function handleOpenReview(
     session: Session
   ) {
@@ -3761,7 +3771,7 @@ function CampaignApp({
             onEndSession={handleEndSession}
             onSessionTitleChange={handleSessionTitleChange}
             onExportCampaign={handleExportCampaign}
-            onImportCampaign={handleImportCampaign}
+            onImportCampaign={onImportCampaign}
             onQuickNoteSaved={(quickNote) =>
               setQuickNotes((current) => [
                 ...current,
@@ -3853,6 +3863,79 @@ function App() {
     void loadCampaigns()
   }, [])
 
+async function handleImportCampaign(
+    file: File
+  ) {
+    try {
+      const text =
+        await file.text()
+
+      const backup =
+        JSON.parse(text)
+
+      const result =
+        await importCampaign(
+          backup
+        )
+
+      if (
+        result.status ===
+        'campaign_exists'
+      ) {
+        const shouldReplace =
+          window.confirm(
+            `Campaign "${result.campaign.name}" already exists on this device.\n\nReplace the existing campaign with this backup?\n\nThis will remove the locally stored version and restore the imported version.`
+          )
+
+        if (!shouldReplace) {
+          return
+        }
+
+        const restoredCampaign =
+          await replaceCampaignFromBackup(
+            backup
+          )
+
+        setCampaigns(
+          await getCampaigns()
+        )
+
+        setCampaign(
+          restoredCampaign
+        )
+
+        alert(
+          `Campaign "${restoredCampaign.name}" restored successfully.`
+        )
+
+        return
+      }
+
+      setCampaigns(
+        await getCampaigns()
+      )
+
+      setCampaign(
+        result.campaign
+      )
+
+      alert(
+        `Campaign "${result.campaign.name}" imported successfully.`
+      )
+    } catch (error) {
+      console.error(
+        'Campaign import failed.',
+        error
+      )
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Campaign import failed.'
+      )
+    }
+  }
+
   if (isLoading) {
     return (
       <main className="loading-screen">
@@ -3865,8 +3948,9 @@ function App() {
     return (
       <CampaignChooser
         campaigns={campaigns}
-        onSelect={
-          setCampaign
+        onSelect={setCampaign}
+        onImportCampaign={
+          handleImportCampaign
         }
         onCreated={(newCampaign) => {
           setCampaigns(
@@ -3889,6 +3973,9 @@ function App() {
       campaign={campaign}
       onSwitchCampaign={() =>
         setCampaign(undefined)
+      }
+      onImportCampaign={
+        handleImportCampaign
       }
     />
   )

@@ -371,21 +371,21 @@ export default function CharacterPage({
   return (
     <>
       <section className="page left-page character-page distress-b">
-        <div className="character-save-row">
-          <span className="character-save-status">
-            {saveStatus === 'saving'
-              ? 'Saving…'
-              : saveStatus === 'error'
-                ? 'Save error'
-                : 'Saved'}
-          </span>
-        </div>
-
         <div className="character-heading compact-character-heading">
           <label className="character-name-field">
-                <span>Character Name</span>
+            <span className="character-name-label">
+              <span>Character Name</span>
 
-                <input
+              <span className="character-save-status">
+                {saveStatus === 'saving'
+                  ? 'Saving…'
+                  : saveStatus === 'error'
+                    ? 'Save error'
+                    : 'Saved'}
+              </span>
+            </span>
+
+            <input
                 value={character.name}
                 onChange={(event) =>
                     updateTextField(

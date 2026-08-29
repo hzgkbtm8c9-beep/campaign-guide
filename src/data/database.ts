@@ -727,6 +727,65 @@ class CampaignGuideDatabase extends Dexie {
       noteContributions:
         'id, campaignId, targetType, targetId, sessionId, createdAt',
     })
+
+    this.version(16)
+      .stores({
+        campaigns:
+          'id, name, createdAt',
+
+        characters:
+          'id, campaignId, name, updatedAt',
+
+        goals:
+          'id, campaignId, term, status, hasSetback, updatedAt',
+
+        reminders:
+          'id, campaignId, updatedAt',
+
+        sessions:
+          'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+        quickNotes:
+          'id, campaignId, sessionId, capturedAt',
+
+        people:
+          'id, campaignId, name, createdAt',
+
+        discoveryCategories:
+          'id, campaignId, name, sortPosition',
+
+        discoveries:
+          'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+        reviewDrafts:
+          'id, campaignId, sessionId, status, currentReviewItemId',
+
+        reviewItems:
+          'id, reviewDraftId, quickNoteId',
+
+        reviewDraftPeople:
+          'id, reviewDraftId, name, createdAt',
+
+        reviewDraftCategories:
+          'id, reviewDraftId, name, createdAt',
+
+        reviewDraftDiscoveries:
+          'id, reviewDraftId, title, categoryRef, createdAt',
+
+        reviewDestinations:
+          'id, reviewItemId, destinationType, targetId',
+
+        noteContributions:
+          'id, campaignId, targetType, targetId, sessionId, createdAt',
+      })
+      .upgrade(async (transaction) => {
+        await transaction
+          .table('reminders')
+          .toCollection()
+          .modify((reminder) => {
+            reminder.todaySummary = ''
+          })
+      })
   }
 }
 
