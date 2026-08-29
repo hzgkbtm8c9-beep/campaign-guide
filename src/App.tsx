@@ -47,6 +47,9 @@ import {
   updateReviewItemText,
   getGoals,
   getReminders,
+  exportCampaign,
+  importCampaign,
+  replaceCampaignFromBackup,
 } from './data/repository'
 
 import type {
@@ -2474,6 +2477,8 @@ function TodayPage({
   onSwitchCampaign,
   onOpenGoals,
   onOpenReminders,
+  onExportCampaign,
+  onImportCampaign,
 }: {
   campaign: Campaign
   activeSession:
@@ -2492,6 +2497,9 @@ function TodayPage({
   onOpenReview:
     (session: Session) => Promise<void>
   onSwitchCampaign: () => void
+  onExportCampaign: () => Promise<void>
+  onImportCampaign:
+    (file: File) => Promise<void>
   onOpenGoals: () => void
   onOpenReminders: () => void
 }) {
@@ -2885,12 +2893,43 @@ function TodayPage({
         <div className="today-switch-campaign">
           <button
             className="switch-campaign-button"
-            onClick={
-              onSwitchCampaign
-            }
+            onClick={onSwitchCampaign}
           >
             Switch Campaign
           </button>
+
+          <button
+            className="switch-campaign-button"
+            onClick={() =>
+              void onExportCampaign()
+            }
+          >
+            Export Campaign
+          </button>
+
+          <label className="switch-campaign-button">
+            Import Campaign
+
+            <input
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={(event) => {
+                const file =
+                  event.target.files?.[0]
+
+                if (!file) {
+                  return
+                }
+
+                void onImportCampaign(
+                  file
+                )
+
+                event.target.value = ''
+              }}
+            />
+          </label>
         </div>
       </section>
 
@@ -3008,55 +3047,56 @@ function CampaignSetup({
   }
 
   return (
-    <main className="setup-screen">
+    <main
+      className="setup-screen"
+      style={textureVariables}
+    >
       <div className="setup-card">
-        <div className="setup-mark">
-          ✦
-        </div>
+        <div className="setup-content">
+          <h1>
+            Welcome to Campaign Guide
+          </h1>
 
-        <h1>
-          Welcome to Campaign Guide
-        </h1>
-
-        <p>
-          Keep your sessions,
-          character, people,
-          discoveries, goals, and
-          during-play notes together
-          in one place.
-        </p>
-
-        <label htmlFor="campaign-name">
-          Campaign Name
-        </label>
-
-        <input
-          id="campaign-name"
-          value={name}
-          onChange={(event) =>
-            setName(
-              event.target.value
-            )
-          }
-          placeholder="Enter campaign name"
-          autoFocus
-        />
-
-        {error && (
-          <p className="form-error">
-            {error}
+          <p>
+            Keep your sessions,
+            character, people,
+            discoveries, goals, and
+            during-play notes together
+            in one place.
           </p>
-        )}
 
-        <button
-          className="primary-button setup-button"
-          onClick={handleCreate}
-          disabled={isCreating}
-        >
-          {isCreating
-            ? 'Creating…'
-            : 'Create Campaign'}
-        </button>
+          <label htmlFor="campaign-name">
+            Campaign Name
+          </label>
+
+          <input
+            id="campaign-name"
+            value={name}
+            onChange={(event) =>
+              setName(
+                event.target.value
+              )
+            }
+            placeholder="Enter campaign name"
+            autoFocus
+          />
+
+          {error && (
+            <p className="form-error">
+              {error}
+            </p>
+          )}
+
+          <button
+            className="primary-button setup-button"
+            onClick={handleCreate}
+            disabled={isCreating}
+          >
+            {isCreating
+              ? 'Creating…'
+              : 'Create Campaign'}
+          </button>
+        </div>
       </div>
     </main>
   )
@@ -3089,44 +3129,52 @@ function CampaignChooser({
   }
 
   return (
-    <main className="setup-screen">
+    <main
+      className="setup-screen"
+      style={textureVariables}
+    >
       <div className="setup-card">
-        <div className="setup-mark">
-          ✦
+        <div className="setup-content">
+          <h1>
+            Campaign Guide
+          </h1>
+
+          <p>
+            Choose a campaign to continue.
+          </p>
+
+          <div className="campaign-choice-list">
+            {campaigns.map(
+              (campaign) => (
+                <button
+                  key={campaign.id}
+                  className="campaign-choice-button"
+                  onClick={() =>
+                    onSelect(campaign)
+                  }
+                >
+                  {campaign.name}
+                </button>
+              )
+            )}
+          </div>
+
+          <button
+            className="primary-button setup-button"
+            onClick={() =>
+              setShowCreate(true)
+            }
+          >
+            Create New Campaign
+          </button>
+
+          <div className="setup-illustration">
+            <img
+              src={todayIllustration}
+              alt=""
+            />
+          </div>
         </div>
-
-        <h1>
-          Campaign Guide
-        </h1>
-
-        <p>
-          Choose a campaign to continue.
-        </p>
-
-        <div className="campaign-choice-list">
-          {campaigns.map(
-            (campaign) => (
-              <button
-                key={campaign.id}
-                className="campaign-choice-button"
-                onClick={() =>
-                  onSelect(campaign)
-                }
-              >
-                {campaign.name}
-              </button>
-            )
-          )}
-        </div>
-
-        <button
-          className="primary-button setup-button"
-          onClick={() =>
-            setShowCreate(true)
-          }
-        >
-          Create New Campaign
-        </button>
       </div>
     </main>
   )
@@ -3361,6 +3409,137 @@ function CampaignApp({
     )
   }
 
+  async function handleExportCampaign() {
+    try {
+      const backup =
+        await exportCampaign(
+          campaign.id
+        )
+
+      const json =
+        JSON.stringify(
+          backup,
+          null,
+          2
+        )
+
+      const blob =
+        new Blob(
+          [json],
+          {
+            type: 'application/json',
+          }
+        )
+
+      const url =
+        URL.createObjectURL(blob)
+
+      const link =
+        document.createElement('a')
+
+      const safeCampaignName =
+        campaign.name
+          .trim()
+          .replace(
+            /[^a-z0-9]+/gi,
+            '-'
+          )
+          .replace(
+            /^-+|-+$/g,
+            ''
+          )
+          .toLowerCase()
+
+      const date =
+        new Date()
+          .toISOString()
+          .slice(0, 10)
+
+      link.href = url
+
+      link.download =
+        `${safeCampaignName || 'campaign'}-${date}.json`
+
+      document.body.appendChild(
+        link
+      )
+
+      link.click()
+
+      link.remove()
+
+      URL.revokeObjectURL(
+        url
+      )
+    } catch (error) {
+      console.error(
+        'Campaign export failed.',
+        error
+      )
+    }
+  }
+
+  async function handleImportCampaign(
+    file: File
+  ) {
+    try {
+      const text =
+        await file.text()
+
+      const backup =
+        JSON.parse(text)
+
+      const result =
+        await importCampaign(
+          backup
+        )
+
+      if (
+        result.status ===
+        'campaign_exists'
+      ) {
+        const shouldReplace =
+          window.confirm(
+            `Campaign "${result.campaign.name}" already exists on this device.\n\nReplace the existing campaign with this backup?\n\nThis will remove the locally stored version and restore the imported version.`
+          )
+
+        if (!shouldReplace) {
+          return
+        }
+
+        const restoredCampaign =
+          await replaceCampaignFromBackup(
+            backup
+          )
+
+        alert(
+          `Campaign "${restoredCampaign.name}" restored successfully.`
+        )
+
+        onSwitchCampaign()
+
+        return
+      }
+
+      alert(
+        `Campaign "${result.campaign.name}" imported successfully.`
+      )
+
+      onSwitchCampaign()
+    } catch (error) {
+      console.error(
+        'Campaign import failed.',
+        error
+      )
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Campaign import failed.'
+      )
+    }
+  }
+
   async function handleOpenReview(
     session: Session
   ) {
@@ -3581,6 +3760,8 @@ function CampaignApp({
             onStartSession={handleStartSession}
             onEndSession={handleEndSession}
             onSessionTitleChange={handleSessionTitleChange}
+            onExportCampaign={handleExportCampaign}
+            onImportCampaign={handleImportCampaign}
             onQuickNoteSaved={(quickNote) =>
               setQuickNotes((current) => [
                 ...current,

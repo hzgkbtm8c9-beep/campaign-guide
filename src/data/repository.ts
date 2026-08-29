@@ -2382,3 +2382,670 @@ export async function deleteReminder(
     reminderId
   )
 }
+
+export async function exportCampaign(
+  campaignId: string
+) {
+  const campaign =
+    await db.campaigns.get(campaignId)
+
+  if (!campaign) {
+    throw new Error(
+      'Campaign not found.'
+    )
+  }
+
+  // Direct campaign-owned records
+  const [
+    characters,
+    goals,
+    reminders,
+    sessions,
+    quickNotes,
+    people,
+    discoveryCategories,
+    discoveries,
+    reviewDrafts,
+    noteContributions,
+  ] = await Promise.all([
+    db.characters
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.goals
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.reminders
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.sessions
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.quickNotes
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.people
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.discoveryCategories
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.discoveries
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.reviewDrafts
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.noteContributions
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+  ])
+
+  /*
+    The remaining Review tables don't
+    contain campaignId directly.
+
+    We therefore collect them through
+    their parent Review Draft / Item.
+  */
+
+  const reviewDraftIds =
+    reviewDrafts.map(
+      (draft) => draft.id
+    )
+
+  const reviewItems =
+    reviewDraftIds.length > 0
+      ? await db.reviewItems
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .toArray()
+      : []
+
+  const [
+    reviewDraftPeople,
+    reviewDraftCategories,
+    reviewDraftDiscoveries,
+  ] =
+    reviewDraftIds.length > 0
+      ? await Promise.all([
+          db.reviewDraftPeople
+            .where('reviewDraftId')
+            .anyOf(reviewDraftIds)
+            .toArray(),
+
+          db.reviewDraftCategories
+            .where('reviewDraftId')
+            .anyOf(reviewDraftIds)
+            .toArray(),
+
+          db.reviewDraftDiscoveries
+            .where('reviewDraftId')
+            .anyOf(reviewDraftIds)
+            .toArray(),
+        ])
+      : [[], [], []]
+
+  const reviewItemIds =
+    reviewItems.map(
+      (item) => item.id
+    )
+
+  const reviewDestinations =
+    reviewItemIds.length > 0
+      ? await db.reviewDestinations
+          .where('reviewItemId')
+          .anyOf(reviewItemIds)
+          .toArray()
+      : []
+
+  return {
+    format:
+      'campaign-guide-backup',
+    version: 1,
+    exportedAt:
+      new Date().toISOString(),
+
+    campaign,
+
+    data: {
+      characters,
+      goals,
+      reminders,
+      sessions,
+      quickNotes,
+      people,
+      discoveryCategories,
+      discoveries,
+      reviewDrafts,
+      reviewItems,
+      reviewDraftPeople,
+      reviewDraftCategories,
+      reviewDraftDiscoveries,
+      reviewDestinations,
+      noteContributions,
+    },
+  }
+}
+
+export async function importCampaign(
+  backup: any
+) {
+  // ---------- Basic validation ----------
+
+  if (
+    !backup ||
+    backup.format !==
+      'campaign-guide-backup' ||
+    backup.version !== 1 ||
+    !backup.campaign ||
+    !backup.data
+  ) {
+    throw new Error(
+      'This is not a valid Campaign Guide backup.'
+    )
+  }
+
+  const campaignId =
+    backup.campaign.id
+
+  if (!campaignId) {
+    throw new Error(
+      'Backup has no campaign ID.'
+    )
+  }
+
+  const existingCampaign =
+    await db.campaigns.get(
+      campaignId
+    )
+
+  /*
+    For now we deliberately refuse to
+    overwrite an existing campaign.
+
+    App.tsx will later decide whether
+    replacement is allowed.
+  */
+  if (existingCampaign) {
+    return {
+      status:
+        'campaign_exists' as const,
+      campaign:
+        existingCampaign,
+    }
+  }
+
+  const data = backup.data
+
+  await db.transaction(
+    'rw',
+    [
+      db.campaigns,
+      db.characters,
+      db.goals,
+      db.reminders,
+      db.sessions,
+      db.quickNotes,
+      db.people,
+      db.discoveryCategories,
+      db.discoveries,
+      db.reviewDrafts,
+      db.reviewItems,
+      db.reviewDraftPeople,
+      db.reviewDraftCategories,
+      db.reviewDraftDiscoveries,
+      db.reviewDestinations,
+      db.noteContributions,
+    ],
+    async () => {
+      await db.campaigns.add(
+        backup.campaign
+      )
+
+      if (data.characters?.length) {
+        await db.characters.bulkAdd(
+          data.characters
+        )
+      }
+
+      if (data.goals?.length) {
+        await db.goals.bulkAdd(
+          data.goals
+        )
+      }
+
+      if (data.reminders?.length) {
+        await db.reminders.bulkAdd(
+          data.reminders
+        )
+      }
+
+      if (data.sessions?.length) {
+        await db.sessions.bulkAdd(
+          data.sessions
+        )
+      }
+
+      if (data.quickNotes?.length) {
+        await db.quickNotes.bulkAdd(
+          data.quickNotes
+        )
+      }
+
+      if (data.people?.length) {
+        await db.people.bulkAdd(
+          data.people
+        )
+      }
+
+      if (
+        data.discoveryCategories
+          ?.length
+      ) {
+        await db.discoveryCategories
+          .bulkAdd(
+            data.discoveryCategories
+          )
+      }
+
+      if (
+        data.discoveries?.length
+      ) {
+        await db.discoveries.bulkAdd(
+          data.discoveries
+        )
+      }
+
+      if (
+        data.reviewDrafts?.length
+      ) {
+        await db.reviewDrafts.bulkAdd(
+          data.reviewDrafts
+        )
+      }
+
+      if (
+        data.reviewItems?.length
+      ) {
+        await db.reviewItems.bulkAdd(
+          data.reviewItems
+        )
+      }
+
+      if (
+        data.reviewDraftPeople
+          ?.length
+      ) {
+        await db.reviewDraftPeople
+          .bulkAdd(
+            data.reviewDraftPeople
+          )
+      }
+
+      if (
+        data.reviewDraftCategories
+          ?.length
+      ) {
+        await db.reviewDraftCategories
+          .bulkAdd(
+            data.reviewDraftCategories
+          )
+      }
+
+      if (
+        data.reviewDraftDiscoveries
+          ?.length
+      ) {
+        await db.reviewDraftDiscoveries
+          .bulkAdd(
+            data.reviewDraftDiscoveries
+          )
+      }
+
+      if (
+        data.reviewDestinations
+          ?.length
+      ) {
+        await db.reviewDestinations
+          .bulkAdd(
+            data.reviewDestinations
+          )
+      }
+
+      if (
+        data.noteContributions
+          ?.length
+      ) {
+        await db.noteContributions
+          .bulkAdd(
+            data.noteContributions
+          )
+      }
+    }
+  )
+
+  return {
+    status: 'imported' as const,
+    campaign:
+      backup.campaign,
+  }
+}
+
+export async function replaceCampaignFromBackup(
+  backup: any
+) {
+  // ---------- Basic validation ----------
+
+  if (
+    !backup ||
+    backup.format !==
+      'campaign-guide-backup' ||
+    backup.version !== 1 ||
+    !backup.campaign ||
+    !backup.data
+  ) {
+    throw new Error(
+      'This is not a valid Campaign Guide backup.'
+    )
+  }
+
+  const campaignId =
+    backup.campaign.id
+
+  if (!campaignId) {
+    throw new Error(
+      'Backup has no campaign ID.'
+    )
+  }
+
+  const existingCampaign =
+    await db.campaigns.get(
+      campaignId
+    )
+
+  if (!existingCampaign) {
+    throw new Error(
+      'Campaign to replace was not found.'
+    )
+  }
+
+  const data = backup.data
+
+  await db.transaction(
+    'rw',
+    [
+      db.campaigns,
+      db.characters,
+      db.goals,
+      db.reminders,
+      db.sessions,
+      db.quickNotes,
+      db.people,
+      db.discoveryCategories,
+      db.discoveries,
+      db.reviewDrafts,
+      db.reviewItems,
+      db.reviewDraftPeople,
+      db.reviewDraftCategories,
+      db.reviewDraftDiscoveries,
+      db.reviewDestinations,
+      db.noteContributions,
+    ],
+    async () => {
+      /*
+        Find existing Review records
+        before deleting their parents.
+      */
+
+      const existingReviewDrafts =
+        await db.reviewDrafts
+          .where('campaignId')
+          .equals(campaignId)
+          .toArray()
+
+      const reviewDraftIds =
+        existingReviewDrafts.map(
+          (draft) => draft.id
+        )
+
+      const existingReviewItems =
+        reviewDraftIds.length > 0
+          ? await db.reviewItems
+              .where('reviewDraftId')
+              .anyOf(reviewDraftIds)
+              .toArray()
+          : []
+
+      const reviewItemIds =
+        existingReviewItems.map(
+          (item) => item.id
+        )
+
+      // ---------- Delete old data ----------
+
+      if (reviewItemIds.length > 0) {
+        await db.reviewDestinations
+          .where('reviewItemId')
+          .anyOf(reviewItemIds)
+          .delete()
+      }
+
+      if (reviewDraftIds.length > 0) {
+        await db.reviewDraftPeople
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .delete()
+
+        await db.reviewDraftCategories
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .delete()
+
+        await db.reviewDraftDiscoveries
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .delete()
+
+        await db.reviewItems
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .delete()
+      }
+
+      await db.reviewDrafts
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.noteContributions
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.discoveries
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.discoveryCategories
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.people
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.quickNotes
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.sessions
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.reminders
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.goals
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.characters
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.campaigns.delete(
+        campaignId
+      )
+
+      // ---------- Restore backup ----------
+
+      await db.campaigns.add(
+        backup.campaign
+      )
+
+      if (data.characters?.length) {
+        await db.characters.bulkAdd(
+          data.characters
+        )
+      }
+
+      if (data.goals?.length) {
+        await db.goals.bulkAdd(
+          data.goals
+        )
+      }
+
+      if (data.reminders?.length) {
+        await db.reminders.bulkAdd(
+          data.reminders
+        )
+      }
+
+      if (data.sessions?.length) {
+        await db.sessions.bulkAdd(
+          data.sessions
+        )
+      }
+
+      if (data.quickNotes?.length) {
+        await db.quickNotes.bulkAdd(
+          data.quickNotes
+        )
+      }
+
+      if (data.people?.length) {
+        await db.people.bulkAdd(
+          data.people
+        )
+      }
+
+      if (
+        data.discoveryCategories
+          ?.length
+      ) {
+        await db.discoveryCategories
+          .bulkAdd(
+            data.discoveryCategories
+          )
+      }
+
+      if (data.discoveries?.length) {
+        await db.discoveries.bulkAdd(
+          data.discoveries
+        )
+      }
+
+      if (data.reviewDrafts?.length) {
+        await db.reviewDrafts.bulkAdd(
+          data.reviewDrafts
+        )
+      }
+
+      if (data.reviewItems?.length) {
+        await db.reviewItems.bulkAdd(
+          data.reviewItems
+        )
+      }
+
+      if (
+        data.reviewDraftPeople
+          ?.length
+      ) {
+        await db.reviewDraftPeople
+          .bulkAdd(
+            data.reviewDraftPeople
+          )
+      }
+
+      if (
+        data.reviewDraftCategories
+          ?.length
+      ) {
+        await db.reviewDraftCategories
+          .bulkAdd(
+            data.reviewDraftCategories
+          )
+      }
+
+      if (
+        data.reviewDraftDiscoveries
+          ?.length
+      ) {
+        await db.reviewDraftDiscoveries
+          .bulkAdd(
+            data.reviewDraftDiscoveries
+          )
+      }
+
+      if (
+        data.reviewDestinations
+          ?.length
+      ) {
+        await db.reviewDestinations
+          .bulkAdd(
+            data.reviewDestinations
+          )
+      }
+
+      if (
+        data.noteContributions
+          ?.length
+      ) {
+        await db.noteContributions
+          .bulkAdd(
+            data.noteContributions
+          )
+      }
+    }
+  )
+
+  return backup.campaign
+}
