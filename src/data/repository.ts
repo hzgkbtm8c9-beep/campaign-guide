@@ -2282,6 +2282,7 @@ export async function getOrCreateCharacter(
     talentsAndSpells: '',
 
     gear: Array(20).fill(''),
+    maxGearCapacity: null,
     freeToCarry: '',
 
     gp: null,
