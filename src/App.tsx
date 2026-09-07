@@ -4,6 +4,7 @@ import PeoplePage from './pages/PeoplePage'
 import DiscoveriesPage from './pages/DiscoveriesPage'
 import JournalPage from './pages/JournalPage'
 import CharacterPage from './pages/CharacterPage'
+import CharacterModulePage from './pages/CharacterModulePage'
 import GoalsPage from './pages/GoalsPage'
 import RemindersPage from './pages/RemindersPage'
 import todayIllustration from './assets/today/Campaign guide image2.png'
@@ -19,6 +20,7 @@ import {
   addReviewDraftPersonDestination,
   completeReview,
   createCampaign,
+  deleteCampaign,
   createQuickNote,
   createReviewDraftCategory,
   createReviewDraftDiscoveryAndDestination,
@@ -84,7 +86,7 @@ import {
 type Section =
   | 'today'
   | 'character'
-  | 'ferret'
+  | 'characterModule'
   | 'goals'
   | 'people'
   | 'discoveries'
@@ -104,7 +106,7 @@ const sections: {
 }[] = [
   { id: 'today', label: 'Today' },
   { id: 'character', label: 'Character' },
-  { id: 'ferret', label: 'Ferret' },
+  { id: 'characterModule', label: 'Ferret' },
   { id: 'goals', label: 'Goals' },
   { id: 'people', label: 'People' },
   { id: 'discoveries', label: 'Discoveries' },
@@ -116,7 +118,7 @@ const sections: {
 const sectionIcons = {
   today: Sparkles,
   character: Contact,
-  ferret: Package,
+  characterModule: Package,
   goals: Target,
   people: Users,
   discoveries: Compass,
@@ -1512,35 +1514,33 @@ function ReviewScreen({
                     </button>
                   </div>
 
-                  {entry.quickNote && (
-                    <div className="summary-section">
-                      <h3>
-                        Original Quick Note
-                      </h3>
-
-                      <p>
-                        {
-                          entry.quickNote
-                            .text
-                        }
-                      </p>
-                    </div>
-                  )}
-
                   {entry.reviewItem
                     .isDiscarded ? (
-                    <div className="summary-section">
-                      <h3>
-                        Outcome
-                      </h3>
+                    <>
+                      {entry.quickNote && (
+                        <div className="summary-section">
+                          <p>
+                            {
+                              entry.quickNote
+                                .text
+                            }
+                          </p>
+                        </div>
+                      )}
 
-                      <p>
-                        This Quick Note is
-                        discarded and will
-                        create no permanent
-                        contribution.
-                      </p>
-                    </div>
+                      <div className="summary-section">
+                        <h3>
+                          Outcome
+                        </h3>
+
+                        <p>
+                          This Quick Note is
+                          discarded and will
+                          create no permanent
+                          contribution.
+                        </p>
+                      </div>
+                    </>
                   ) : (
                     <div className="summary-section">
                       <h3>
@@ -3144,6 +3144,7 @@ function CampaignChooser({
   onSelect,
   onCreated,
   onImportCampaign,
+  onDelete,
 }: {
   campaigns: Campaign[]
   onSelect:
@@ -3152,6 +3153,8 @@ function CampaignChooser({
     (campaign: Campaign) => void
   onImportCampaign:
     (file: File) => Promise<void>
+  onDelete:
+    (campaign: Campaign) => Promise<void>
 }) {
   const [
     showCreate,
@@ -3192,15 +3195,29 @@ function CampaignChooser({
           <div className="campaign-choice-list">
             {campaigns.map(
               (campaign) => (
-                <button
+                <div
                   key={campaign.id}
-                  className="campaign-choice-button"
-                  onClick={() =>
-                    onSelect(campaign)
-                  }
+                  className="campaign-choice-row"
                 >
-                  {campaign.name}
-                </button>
+                  <button
+                    className="campaign-choice-button"
+                    onClick={() =>
+                      onSelect(campaign)
+                    }
+                  >
+                    {campaign.name}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="campaign-delete-button"
+                    onClick={() => {
+                      void onDelete(campaign)
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
               )
             )}
           </div>
@@ -3790,6 +3807,10 @@ function CampaignApp({
           <CharacterPage
             campaign={campaign}
           />
+        ) : activeSection === 'characterModule' ? (
+          <CharacterModulePage
+            campaign={campaign}
+          />
         ) : activeSection === 'goals' ? (
           <GoalsPage
             campaign={campaign}
@@ -3936,6 +3957,38 @@ async function handleImportCampaign(
     }
   }
 
+  async function handleDeleteCampaign(
+    campaignToDelete: Campaign
+  ) {
+    const shouldDelete =
+      window.confirm(
+        `Delete "${campaignToDelete.name}"?\n\nThis permanently deletes the campaign and all of its locally stored data.\n\nThis cannot be undone.`
+      )
+
+    if (!shouldDelete) {
+      return
+    }
+
+    try {
+      await deleteCampaign(
+        campaignToDelete.id
+      )
+
+      setCampaigns(
+        await getCampaigns()
+      )
+    } catch (error) {
+      console.error(
+        'Campaign deletion failed.',
+        error
+      )
+
+      alert(
+        'Campaign could not be deleted.'
+      )
+    }
+  }
+
   if (isLoading) {
     return (
       <main className="loading-screen">
@@ -3949,9 +4002,8 @@ async function handleImportCampaign(
       <CampaignChooser
         campaigns={campaigns}
         onSelect={setCampaign}
-        onImportCampaign={
-          handleImportCampaign
-        }
+        onDelete={handleDeleteCampaign}
+        onImportCampaign={handleImportCampaign}
         onCreated={(newCampaign) => {
           setCampaigns(
             (current) => [

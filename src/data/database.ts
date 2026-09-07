@@ -33,6 +33,7 @@ export interface Character {
 
   level: number | null
   xp: number | null
+  xpToNextLevel: number | null
 
   title: string
   alignment: string
@@ -54,11 +55,92 @@ export interface Character {
   talentsAndSpells: string
 
   gear: string[]
+  maxGearCapacity: number | null
   freeToCarry: string
 
   gp: number | null
   sp: number | null
   cp: number | null
+
+  createdAt: string
+  updatedAt: string
+}
+
+export type EquipmentType =
+  | 'weapon'
+  | 'armor'
+  | 'gear'
+  | 'gem'
+
+export interface EquipmentItem {
+  id: string
+  campaignId: string
+  characterId: string
+
+  name: string
+  type: EquipmentType
+
+  quantity: string
+  gearSlots: number
+  costValue: string
+  description: string
+
+  damage: string
+  weaponType: string
+  range: string
+  properties: string
+  armorClass: string
+
+  sortPosition: number
+
+  createdAt: string
+  updatedAt: string
+}
+
+export type FerretRelationship =
+  | 'wary'
+  | 'tolerant'
+  | 'friendly'
+  | 'trusting'
+  | 'bonded'
+
+export type FerretHunger =
+  | 'full'
+  | 'hungry'
+  | 'starving'
+
+export interface CharacterModule {
+  id: string
+  campaignId: string
+  characterId: string
+
+  moduleType: 'ferret'
+  title: string
+  sortPosition: number
+
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FerretModuleData {
+  characterModuleId: string
+
+  name: string
+  description: string
+  relationship: FerretRelationship
+  hunger: FerretHunger
+
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FerretAbility {
+  id: string
+  characterModuleId: string
+
+  name: string
+  description: string
+  sortPosition: number
 
   createdAt: string
   updatedAt: string
@@ -238,6 +320,26 @@ class CampaignGuideDatabase extends Dexie {
   campaigns!: EntityTable<Campaign, 'id'>
 
   characters!: EntityTable<Character, 'id'>
+
+  equipmentItems!: EntityTable<
+    EquipmentItem,
+    'id'
+  >
+
+  characterModules!: EntityTable<
+    CharacterModule,
+    'id'
+  >
+
+  ferretModuleData!: EntityTable<
+    FerretModuleData,
+    'characterModuleId'
+  >
+
+  ferretAbilities!: EntityTable<
+    FerretAbility,
+    'id'
+  >
 
   goals!: EntityTable<Goal, 'id'>
 
@@ -785,6 +887,68 @@ class CampaignGuideDatabase extends Dexie {
           .modify((reminder) => {
             reminder.todaySummary = ''
           })
+      })
+
+      this.version(17).stores({
+        campaigns:
+          'id, name, createdAt',
+
+        characters:
+          'id, campaignId, name, updatedAt',
+
+        equipmentItems:
+          'id, campaignId, characterId, type, sortPosition, updatedAt',
+
+        characterModules:
+          'id, campaignId, characterId, moduleType, sortPosition, updatedAt',
+
+        ferretModuleData:
+          'characterModuleId, relationship, hunger, updatedAt',
+
+        ferretAbilities:
+          'id, characterModuleId, sortPosition, updatedAt',
+
+        goals:
+          'id, campaignId, term, status, hasSetback, updatedAt',
+
+        reminders:
+          'id, campaignId, updatedAt',
+
+        sessions:
+          'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+        quickNotes:
+          'id, campaignId, sessionId, capturedAt',
+
+        people:
+          'id, campaignId, name, createdAt',
+
+        discoveryCategories:
+          'id, campaignId, name, sortPosition',
+
+        discoveries:
+          'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+        reviewDrafts:
+          'id, campaignId, sessionId, status, currentReviewItemId',
+
+        reviewItems:
+          'id, reviewDraftId, quickNoteId',
+
+        reviewDraftPeople:
+          'id, reviewDraftId, name, createdAt',
+
+        reviewDraftCategories:
+          'id, reviewDraftId, name, createdAt',
+
+        reviewDraftDiscoveries:
+          'id, reviewDraftId, title, categoryRef, createdAt',
+
+        reviewDestinations:
+          'id, reviewItemId, destinationType, targetId',
+
+        noteContributions:
+          'id, campaignId, targetType, targetId, sessionId, createdAt',
       })
   }
 }

@@ -60,6 +60,190 @@ export async function createCampaign(
   return campaign
 }
 
+export async function deleteCampaign(
+  campaignId: string
+) {
+  return db.transaction(
+    'rw',
+    [
+      db.campaigns,
+      db.characters,
+      db.equipmentItems,
+      db.characterModules,
+      db.ferretModuleData,
+      db.ferretAbilities,
+      db.goals,
+      db.reminders,
+      db.sessions,
+      db.quickNotes,
+      db.people,
+      db.discoveryCategories,
+      db.discoveries,
+      db.reviewDrafts,
+      db.reviewItems,
+      db.reviewDraftPeople,
+      db.reviewDraftCategories,
+      db.reviewDraftDiscoveries,
+      db.reviewDestinations,
+      db.noteContributions,
+    ],
+    async () => {
+      const sessions =
+        await db.sessions
+          .where('campaignId')
+          .equals(campaignId)
+          .toArray()
+
+      const sessionIds =
+        sessions.map(
+          (session) => session.id
+        )
+
+      const reviewDrafts =
+        await db.reviewDrafts
+          .where('campaignId')
+          .equals(campaignId)
+          .toArray()
+
+      const reviewDraftIds =
+        reviewDrafts.map(
+          (draft) => draft.id
+        )
+
+      const reviewItems =
+        reviewDraftIds.length > 0
+          ? await db.reviewItems
+              .where('reviewDraftId')
+              .anyOf(reviewDraftIds)
+              .toArray()
+          : []
+
+      const reviewItemIds =
+        reviewItems.map(
+          (item) => item.id
+        )
+
+      if (reviewItemIds.length > 0) {
+        await db.reviewDestinations
+          .where('reviewItemId')
+          .anyOf(reviewItemIds)
+          .delete()
+
+        await db.reviewItems
+          .where('id')
+          .anyOf(reviewItemIds)
+          .delete()
+      }
+
+      if (reviewDraftIds.length > 0) {
+        await db.reviewDraftPeople
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .delete()
+
+        await db.reviewDraftCategories
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .delete()
+
+        await db.reviewDraftDiscoveries
+          .where('reviewDraftId')
+          .anyOf(reviewDraftIds)
+          .delete()
+
+        await db.reviewDrafts
+          .where('id')
+          .anyOf(reviewDraftIds)
+          .delete()
+      }
+
+      if (sessionIds.length > 0) {
+        await db.quickNotes
+          .where('sessionId')
+          .anyOf(sessionIds)
+          .delete()
+      }
+
+      await db.noteContributions
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      const characterModules =
+        await db.characterModules
+          .where('campaignId')
+          .equals(campaignId)
+          .toArray()
+
+      const characterModuleIds =
+        characterModules.map(
+          (module) => module.id
+        )
+
+      if (characterModuleIds.length > 0) {
+        await db.ferretAbilities
+          .where('characterModuleId')
+          .anyOf(characterModuleIds)
+          .delete()
+
+        await db.ferretModuleData
+          .where('characterModuleId')
+          .anyOf(characterModuleIds)
+          .delete()
+
+        await db.characterModules
+          .where('id')
+          .anyOf(characterModuleIds)
+          .delete()
+      }
+
+      await db.equipmentItems
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.characters
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.goals
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.reminders
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.people
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.discoveries
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.discoveryCategories
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.sessions
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.campaigns.delete(
+        campaignId
+      )
+    }
+  )
+}
+
 export async function getActiveSession(
   campaignId: string
 ) {
@@ -1397,11 +1581,8 @@ export async function getReviewResolutionSummary(
 export async function getReviewSummaryData(
   reviewDraftId: string
 ) {
-  const reviewItems =
-    await db.reviewItems
-      .where('reviewDraftId')
-      .equals(reviewDraftId)
-      .toArray()
+    const reviewItems =
+      await getReviewItems(reviewDraftId)
 
   const quickNoteIds =
     reviewItems.map(
@@ -1470,6 +1651,7 @@ export async function completeReview(
       db.reviewDraftPeople,
       db.reviewDraftCategories,
       db.reviewDraftDiscoveries,
+      db.quickNotes,
       db.people,
       db.discoveryCategories,
       db.discoveries,
@@ -1508,10 +1690,9 @@ export async function completeReview(
       }
 
       const reviewItems =
-        await db.reviewItems
-          .where('reviewDraftId')
-          .equals(reviewDraft.id)
-          .toArray()
+        await getReviewItems(
+          reviewDraft.id
+        )
 
       const reviewItemIds =
         reviewItems.map(
@@ -1731,11 +1912,15 @@ export async function completeReview(
       }
 
       const journalTexts =
-        committedDestinations
-          .filter(
-            (destination) =>
-              destination.destinationType ===
-              'journal'
+        reviewItems
+          .flatMap((reviewItem) =>
+            committedDestinations.filter(
+              (destination) =>
+                destination.reviewItemId ===
+                  reviewItem.id &&
+                destination.destinationType ===
+                  'journal'
+            )
           )
           .map(
             (destination) =>
@@ -2052,6 +2237,7 @@ export async function getOrCreateCharacter(
 
     level: null,
     xp: null,
+    xpToNextLevel: null,
 
     title: '',
     alignment: '',
@@ -2146,6 +2332,413 @@ export async function updateCharacter(
 
   return db.characters.get(
     characterId
+  )
+}
+
+export async function getEquipmentItems(
+  characterId: string
+) {
+  const items =
+    await db.equipmentItems
+      .where('characterId')
+      .equals(characterId)
+      .toArray()
+
+  return items.sort(
+    (a, b) =>
+      a.sortPosition -
+      b.sortPosition
+  )
+}
+
+export async function createEquipmentItem(
+  campaignId: string,
+  characterId: string,
+  sortPosition: number,
+  name: string
+) {
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    throw new Error(
+      'Equipment name is required.'
+    )
+  }
+
+  const character =
+    await db.characters.get(characterId)
+
+  if (!character) {
+    throw new Error(
+      'Character not found.'
+    )
+  }
+
+  if (
+    character.campaignId !== campaignId
+  ) {
+    throw new Error(
+      'Character does not belong to this campaign.'
+    )
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const item = {
+    id: createId(),
+    campaignId,
+    characterId,
+
+    name: trimmedName,
+    type: 'gear' as const,
+
+    quantity: '1',
+    gearSlots: 0,
+    costValue: '',
+    description: '',
+
+    damage: '',
+    weaponType: '',
+    range: '',
+    properties: '',
+    armorClass: '',
+
+    sortPosition,
+
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.equipmentItems.add(item)
+
+  return item
+}
+
+export async function updateEquipmentItem(
+  equipmentItemId: string,
+  changes: {
+    name?: string
+    type?: import('./database').EquipmentType
+    quantity?: string
+    gearSlots?: number
+    costValue?: string
+    description?: string
+    damage?: string
+    range?: string
+    properties?: string
+    armorClass?: string
+    weaponType?: string
+    sortPosition?: number
+  }
+) {
+  const item =
+    await db.equipmentItems.get(
+      equipmentItemId
+    )
+
+  if (!item) {
+    throw new Error(
+      'Equipment item not found.'
+    )
+  }
+
+  if (
+    changes.name !== undefined &&
+    !changes.name.trim()
+  ) {
+    throw new Error(
+      'Equipment name is required.'
+    )
+  }
+
+  await db.equipmentItems.update(
+    equipmentItemId,
+    {
+      ...changes,
+      ...(changes.name !== undefined
+        ? {
+            name: changes.name.trim(),
+          }
+        : {}),
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.equipmentItems.get(
+    equipmentItemId
+  )
+}
+
+export async function deleteEquipmentItem(
+  equipmentItemId: string
+) {
+  await db.equipmentItems.delete(
+    equipmentItemId
+  )
+}
+
+/*
+ * FERRET MODULE
+ */
+
+export async function getFerretModule(
+  characterId: string
+) {
+  return db.characterModules
+    .where('characterId')
+    .equals(characterId)
+    .filter(
+      (module) =>
+        module.moduleType === 'ferret'
+    )
+    .first()
+}
+
+export async function createFerretModule(
+  campaignId: string,
+  characterId: string
+) {
+  const existingModule =
+    await getFerretModule(characterId)
+
+  if (existingModule) {
+    return existingModule
+  }
+
+  const character =
+    await db.characters.get(characterId)
+
+  if (!character) {
+    throw new Error(
+      'Character not found.'
+    )
+  }
+
+  if (
+    character.campaignId !== campaignId
+  ) {
+    throw new Error(
+      'Character does not belong to this campaign.'
+    )
+  }
+
+  const timestamp =
+    new Date().toISOString()
+
+  const module = {
+    id: createId(),
+    campaignId,
+    characterId,
+
+    moduleType: 'ferret' as const,
+    title: 'Ferret',
+    sortPosition: 0,
+
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  const moduleData = {
+    characterModuleId: module.id,
+
+    name: '',
+    description: '',
+    relationship: 'wary' as const,
+    hunger: 'full' as const,
+
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.transaction(
+    'rw',
+    [
+      db.characterModules,
+      db.ferretModuleData,
+    ],
+    async () => {
+      await db.characterModules.add(
+        module
+      )
+
+      await db.ferretModuleData.add(
+        moduleData
+      )
+    }
+  )
+
+  return module
+}
+
+export async function getFerretModuleData(
+  characterModuleId: string
+) {
+  return db.ferretModuleData.get(
+    characterModuleId
+  )
+}
+
+export async function updateFerretModuleData(
+  characterModuleId: string,
+  changes: {
+    name?: string
+    description?: string
+    relationship?:
+      import('./database').FerretRelationship
+    hunger?:
+      import('./database').FerretHunger
+  }
+) {
+  const moduleData =
+    await db.ferretModuleData.get(
+      characterModuleId
+    )
+
+  if (!moduleData) {
+    throw new Error(
+      'Ferret module data not found.'
+    )
+  }
+
+  await db.ferretModuleData.update(
+    characterModuleId,
+    {
+      ...changes,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.ferretModuleData.get(
+    characterModuleId
+  )
+}
+
+export async function getFerretAbilities(
+  characterModuleId: string
+) {
+  const abilities =
+    await db.ferretAbilities
+      .where('characterModuleId')
+      .equals(characterModuleId)
+      .toArray()
+
+  return abilities.sort(
+    (a, b) =>
+      a.sortPosition -
+      b.sortPosition
+  )
+}
+
+export async function addFerretAbility(
+  characterModuleId: string
+) {
+  const module =
+    await db.characterModules.get(
+      characterModuleId
+    )
+
+  if (!module) {
+    throw new Error(
+      'Character module not found.'
+    )
+  }
+
+  const existingAbilities =
+    await getFerretAbilities(
+      characterModuleId
+    )
+
+  const timestamp =
+    new Date().toISOString()
+
+  const ability = {
+    id: createId(),
+    characterModuleId,
+
+    name: '',
+    description: '',
+    sortPosition:
+      existingAbilities.length,
+
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.ferretAbilities.add(
+    ability
+  )
+
+  return ability
+}
+
+export async function updateFerretAbility(
+  abilityId: string,
+  changes: {
+    name?: string
+    description?: string
+    sortPosition?: number
+  }
+) {
+  const ability =
+    await db.ferretAbilities.get(
+      abilityId
+    )
+
+  if (!ability) {
+    throw new Error(
+      'Ferret ability not found.'
+    )
+  }
+
+  await db.ferretAbilities.update(
+    abilityId,
+    {
+      ...changes,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.ferretAbilities.get(
+    abilityId
+  )
+}
+
+export async function deleteFerretAbility(
+  abilityId: string
+) {
+  await db.ferretAbilities.delete(
+    abilityId
+  )
+}
+
+export async function deleteFerretModule(
+  characterModuleId: string
+) {
+  return db.transaction(
+    'rw',
+    [
+      db.characterModules,
+      db.ferretModuleData,
+      db.ferretAbilities,
+    ],
+    async () => {
+      await db.ferretAbilities
+        .where('characterModuleId')
+        .equals(characterModuleId)
+        .delete()
+
+      await db.ferretModuleData.delete(
+        characterModuleId
+      )
+
+      await db.characterModules.delete(
+        characterModuleId
+      )
+    }
   )
 }
 
@@ -2398,6 +2991,8 @@ export async function exportCampaign(
   // Direct campaign-owned records
   const [
     characters,
+    equipmentItems,
+    characterModules,
     goals,
     reminders,
     sessions,
@@ -2409,6 +3004,16 @@ export async function exportCampaign(
     noteContributions,
   ] = await Promise.all([
     db.characters
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.equipmentItems
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.characterModules
       .where('campaignId')
       .equals(campaignId)
       .toArray(),
@@ -2458,6 +3063,29 @@ export async function exportCampaign(
       .equals(campaignId)
       .toArray(),
   ])
+
+const characterModuleIds =
+  characterModules.map(
+    (module) => module.id
+  )
+
+const [
+  ferretModuleData,
+  ferretAbilities,
+] =
+  characterModuleIds.length > 0
+    ? await Promise.all([
+        db.ferretModuleData
+          .where('characterModuleId')
+          .anyOf(characterModuleIds)
+          .toArray(),
+
+        db.ferretAbilities
+          .where('characterModuleId')
+          .anyOf(characterModuleIds)
+          .toArray(),
+      ])
+    : [[], []]
 
   /*
     The remaining Review tables don't
@@ -2528,6 +3156,10 @@ export async function exportCampaign(
 
     data: {
       characters,
+      equipmentItems,
+      characterModules,
+      ferretModuleData,
+      ferretAbilities,
       goals,
       reminders,
       sessions,
@@ -2601,6 +3233,10 @@ export async function importCampaign(
     [
       db.campaigns,
       db.characters,
+      db.equipmentItems,
+      db.characterModules,
+      db.ferretModuleData,
+      db.ferretAbilities,
       db.goals,
       db.reminders,
       db.sessions,
@@ -2624,6 +3260,30 @@ export async function importCampaign(
       if (data.characters?.length) {
         await db.characters.bulkAdd(
           data.characters
+        )
+      }
+
+      if (data.equipmentItems?.length) {
+        await db.equipmentItems.bulkAdd(
+          data.equipmentItems
+        )
+      }
+
+      if (data.characterModules?.length) {
+        await db.characterModules.bulkAdd(
+          data.characterModules
+        )
+      }
+
+      if (data.ferretModuleData?.length) {
+        await db.ferretModuleData.bulkAdd(
+          data.ferretModuleData
+        )
+      }
+
+      if (data.ferretAbilities?.length) {
+        await db.ferretAbilities.bulkAdd(
+          data.ferretAbilities
         )
       }
 
@@ -2795,6 +3455,10 @@ export async function replaceCampaignFromBackup(
     [
       db.campaigns,
       db.characters,
+      db.equipmentItems,
+      db.characterModules,
+      db.ferretModuleData,
+      db.ferretAbilities,
       db.goals,
       db.reminders,
       db.sessions,
@@ -2916,6 +3580,39 @@ export async function replaceCampaignFromBackup(
         .equals(campaignId)
         .delete()
 
+      const existingCharacterModules =
+        await db.characterModules
+          .where('campaignId')
+          .equals(campaignId)
+          .toArray()
+
+      const existingCharacterModuleIds =
+        existingCharacterModules.map(
+          (module) => module.id
+        )
+
+      if (existingCharacterModuleIds.length > 0) {
+        await db.ferretAbilities
+          .where('characterModuleId')
+          .anyOf(existingCharacterModuleIds)
+          .delete()
+
+        await db.ferretModuleData
+          .where('characterModuleId')
+          .anyOf(existingCharacterModuleIds)
+          .delete()
+
+        await db.characterModules
+          .where('id')
+          .anyOf(existingCharacterModuleIds)
+          .delete()
+      }
+
+      await db.equipmentItems
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
       await db.characters
         .where('campaignId')
         .equals(campaignId)
@@ -2934,6 +3631,30 @@ export async function replaceCampaignFromBackup(
       if (data.characters?.length) {
         await db.characters.bulkAdd(
           data.characters
+        )
+      }
+
+      if (data.equipmentItems?.length) {
+        await db.equipmentItems.bulkAdd(
+          data.equipmentItems
+        )
+      }
+
+      if (data.characterModules?.length) {
+        await db.characterModules.bulkAdd(
+          data.characterModules
+        )
+      }
+
+      if (data.ferretModuleData?.length) {
+        await db.ferretModuleData.bulkAdd(
+          data.ferretModuleData
+        )
+      }
+
+      if (data.ferretAbilities?.length) {
+        await db.ferretAbilities.bulkAdd(
+          data.ferretAbilities
         )
       }
 
