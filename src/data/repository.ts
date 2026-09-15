@@ -86,6 +86,7 @@ export async function deleteCampaign(
       db.reviewDraftDiscoveries,
       db.reviewDestinations,
       db.noteContributions,
+      db.entityRedirects,
     ],
     async () => {
       const sessions =
@@ -165,6 +166,11 @@ export async function deleteCampaign(
       }
 
       await db.noteContributions
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.entityRedirects
         .where('campaignId')
         .equals(campaignId)
         .delete()
@@ -810,7 +816,762 @@ export async function getPeople(
 export async function getPerson(
   personId: string
 ) {
+  const resolvedPersonId =
+    await resolveEntityRedirect(
+      'person',
+      personId
+    )
+
+  return db.people.get(
+    resolvedPersonId
+  )
+}
+
+export async function resolveEntityRedirect(
+  entityType: 'person' | 'discovery',
+  entityId: string
+) {
+  let currentId = entityId
+
+  const visited =
+    new Set<string>()
+
+  while (!visited.has(currentId)) {
+    visited.add(currentId)
+
+    const redirect =
+      await db.entityRedirects
+        .where('obsoleteId')
+        .equals(currentId)
+        .filter(
+          (candidate) =>
+            candidate.entityType ===
+            entityType
+        )
+        .first()
+
+    if (!redirect) {
+      return currentId
+    }
+
+    currentId =
+      redirect.survivorId
+  }
+
+  throw new Error(
+    'Entity redirect cycle detected.'
+  )
+}
+
+export async function mergePeople(
+  survivorId: string,
+  obsoleteId: string
+) {
+  if (survivorId === obsoleteId) {
+    throw new Error(
+      'A Person cannot be merged with itself.'
+    )
+  }
+
+  const [
+    survivor,
+    obsolete,
+  ] = await Promise.all([
+    db.people.get(survivorId),
+    db.people.get(obsoleteId),
+  ])
+
+  if (!survivor) {
+    throw new Error(
+      'Surviving Person not found.'
+    )
+  }
+
+  if (!obsolete) {
+    throw new Error(
+      'Person to merge not found.'
+    )
+  }
+
+  if (
+    survivor.campaignId !==
+    obsolete.campaignId
+  ) {
+    throw new Error(
+      'People from different campaigns cannot be merged.'
+    )
+  }
+
+  return db.transaction(
+    'rw',
+    [
+      db.people,
+      db.noteContributions,
+      db.entityRedirects,
+    ],
+    async () => {
+      const survivorContributions =
+        await db.noteContributions
+          .where('targetId')
+          .equals(survivorId)
+          .filter(
+            (contribution) =>
+              contribution.targetType ===
+              'person'
+          )
+          .toArray()
+
+      const obsoleteContributions =
+        await db.noteContributions
+          .where('targetId')
+          .equals(obsoleteId)
+          .filter(
+            (contribution) =>
+              contribution.targetType ===
+              'person'
+          )
+          .toArray()
+
+      const timestamp =
+        new Date().toISOString()
+
+      /*
+       * Preserve older flat Notes that
+       * predate contribution tracking.
+       */
+      if (
+        survivorContributions.length ===
+          0 &&
+        survivor.notes.trim()
+      ) {
+        survivorContributions.push({
+          id: createId(),
+          campaignId:
+            survivor.campaignId,
+          targetType: 'person',
+          targetId: survivorId,
+          text: survivor.notes,
+          createdAt:
+            survivor.createdAt,
+          updatedAt: timestamp,
+        })
+
+        await db.noteContributions.add(
+          survivorContributions[
+            survivorContributions.length -
+              1
+          ]
+        )
+      }
+
+      if (
+        obsoleteContributions.length ===
+          0 &&
+        obsolete.notes.trim()
+      ) {
+        obsoleteContributions.push({
+          id: createId(),
+          campaignId:
+            obsolete.campaignId,
+          targetType: 'person',
+          targetId: obsoleteId,
+          text: obsolete.notes,
+          createdAt:
+            obsolete.createdAt,
+          updatedAt: timestamp,
+        })
+
+        await db.noteContributions.add(
+          obsoleteContributions[
+            obsoleteContributions.length -
+              1
+          ]
+        )
+      }
+
+      for (
+        const contribution
+        of obsoleteContributions
+      ) {
+        await db.noteContributions.update(
+          contribution.id,
+          {
+            targetId: survivorId,
+            updatedAt: timestamp,
+          }
+        )
+      }
+
+      const combinedContributions = [
+        ...survivorContributions,
+        ...obsoleteContributions.map(
+          (contribution) => ({
+            ...contribution,
+            targetId: survivorId,
+          })
+        ),
+      ].sort((a, b) => {
+        const timeComparison =
+          a.createdAt.localeCompare(
+            b.createdAt
+          )
+
+        if (timeComparison !== 0) {
+          return timeComparison
+        }
+
+        return a.id.localeCompare(b.id)
+      })
+
+      const combinedNotes =
+        combinedContributions
+          .map(
+            (contribution) =>
+              contribution.text
+          )
+          .filter(Boolean)
+          .join('\n')
+
+      await db.people.update(
+        survivorId,
+        {
+          notes: combinedNotes,
+          updatedAt: timestamp,
+        }
+      )
+
+      await db.entityRedirects.add({
+        id: createId(),
+        campaignId:
+          survivor.campaignId,
+        entityType: 'person',
+        obsoleteId,
+        survivorId,
+        createdAt: timestamp,
+      })
+
+      await db.people.delete(
+        obsoleteId
+      )
+
+      return db.people.get(
+        survivorId
+      )
+    }
+  )
+}
+
+export async function getNoteContributions(
+  targetType: 'person' | 'discovery',
+  targetId: string
+) {
+  const resolvedTargetId =
+    await resolveEntityRedirect(
+      targetType,
+      targetId
+    )
+
+  const contributions =
+    await db.noteContributions
+      .where('targetId')
+      .equals(resolvedTargetId)
+      .filter(
+        (contribution) =>
+          contribution.targetType ===
+          targetType
+      )
+      .toArray()
+
+  return contributions.sort(
+    (a, b) =>
+      a.createdAt.localeCompare(
+        b.createdAt
+      )
+  )
+}
+
+export async function updatePersonName(
+  personId: string,
+  name: string
+) {
+  const person =
+    await db.people.get(personId)
+
+  if (!person) {
+    throw new Error(
+      'Person not found.'
+    )
+  }
+
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    throw new Error(
+      'Person name cannot be empty.'
+    )
+  }
+
+  await db.people.update(
+    personId,
+    {
+      name: trimmedName,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
   return db.people.get(personId)
+}
+
+export async function deletePerson(
+  personId: string
+) {
+  const person =
+    await db.people.get(personId)
+
+  if (!person) {
+    throw new Error(
+      'Person not found.'
+    )
+  }
+
+  await db.transaction(
+    'rw',
+    [
+      db.people,
+      db.noteContributions,
+      db.entityRedirects,
+    ],
+    async () => {
+      const contributionIds =
+        (
+          await db.noteContributions
+            .where('targetId')
+            .equals(personId)
+            .filter(
+              (contribution) =>
+                contribution.targetType ===
+                'person'
+            )
+            .toArray()
+        ).map(
+          (contribution) =>
+            contribution.id
+        )
+
+      if (
+        contributionIds.length > 0
+      ) {
+        await db.noteContributions
+          .where('id')
+          .anyOf(contributionIds)
+          .delete()
+      }
+
+      const redirects =
+        await db.entityRedirects
+          .filter(
+            (redirect) =>
+              redirect.entityType ===
+                'person' &&
+              (
+                redirect.obsoleteId ===
+                  personId ||
+                redirect.survivorId ===
+                  personId
+              )
+          )
+          .toArray()
+
+      const redirectIds =
+        redirects.map(
+          (redirect) =>
+            redirect.id
+        )
+
+      if (redirectIds.length > 0) {
+        await db.entityRedirects
+          .where('id')
+          .anyOf(redirectIds)
+          .delete()
+      }
+
+      await db.people.delete(
+        personId
+      )
+    }
+  )
+}
+
+export async function updatePersonDescription(
+  personId: string,
+  description: string
+) {
+  const person =
+    await db.people.get(personId)
+
+  if (!person) {
+    throw new Error(
+      'Person not found.'
+    )
+  }
+
+  await db.people.update(
+    personId,
+    {
+      description,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.people.get(personId)
+}
+
+export async function updatePersonNotes(
+  personId: string,
+  notes: string
+) {
+  const person =
+    await db.people.get(personId)
+
+  if (!person) {
+    throw new Error(
+      'Person not found.'
+    )
+  }
+
+  if (person.notes === notes) {
+    return person
+  }
+
+  return db.transaction(
+    'rw',
+    [
+      db.people,
+      db.noteContributions,
+    ],
+    async () => {
+      const contributions =
+        (
+          await db.noteContributions
+            .where('targetId')
+            .equals(personId)
+            .filter(
+              (contribution) =>
+                contribution.targetType ===
+                'person'
+            )
+            .toArray()
+        ).sort(
+          (a, b) =>
+            a.createdAt.localeCompare(
+              b.createdAt
+            )
+        )
+
+      const timestamp =
+        new Date().toISOString()
+
+      /*
+       * Emptying the Notes area removes
+       * the existing contributions.
+       */
+      if (!notes.trim()) {
+        const contributionIds =
+          contributions.map(
+            (contribution) =>
+              contribution.id
+          )
+
+        if (
+          contributionIds.length > 0
+        ) {
+          await db.noteContributions
+            .where('id')
+            .anyOf(
+              contributionIds
+            )
+            .delete()
+        }
+
+        await db.people.update(
+          personId,
+          {
+            notes: '',
+            updatedAt: timestamp,
+          }
+        )
+
+        return db.people.get(
+          personId
+        )
+      }
+
+      /*
+       * No contribution history yet:
+       * create one manual contribution.
+       */
+      if (
+        contributions.length === 0
+      ) {
+        await db.noteContributions.add({
+          id: createId(),
+          campaignId:
+            person.campaignId,
+          targetType: 'person',
+          targetId: personId,
+          text: notes,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+
+        await db.people.update(
+          personId,
+          {
+            notes,
+            updatedAt: timestamp,
+          }
+        )
+
+        return db.people.get(
+          personId
+        )
+      }
+
+      /*
+       * Straightforward text added at
+       * the end becomes a new manual
+       * contribution.
+       */
+      if (
+        notes.startsWith(
+          person.notes
+        )
+      ) {
+        const addedText =
+          notes
+            .slice(
+              person.notes.length
+            )
+            .replace(/^\n+/, '')
+
+        if (addedText.trim()) {
+          await db.noteContributions.add({
+            id: createId(),
+            campaignId:
+              person.campaignId,
+            targetType: 'person',
+            targetId: personId,
+            text: addedText,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })
+
+          await db.people.update(
+            personId,
+            {
+              notes,
+              updatedAt: timestamp,
+            }
+          )
+
+          return db.people.get(
+            personId
+          )
+        }
+      }
+
+      /*
+       * Work out where each existing
+       * contribution appears in the
+       * assembled Notes text.
+       */
+      const spans: Array<{
+        id: string
+        start: number
+        end: number
+      }> = []
+
+      let searchFrom = 0
+      let spansAreValid = true
+
+      for (
+        const contribution
+        of contributions
+      ) {
+        const start =
+          person.notes.indexOf(
+            contribution.text,
+            searchFrom
+          )
+
+        if (start < 0) {
+          spansAreValid = false
+          break
+        }
+
+        const end =
+          start +
+          contribution.text.length
+
+        spans.push({
+          id: contribution.id,
+          start,
+          end,
+        })
+
+        searchFrom = end
+      }
+
+      if (spansAreValid) {
+        let prefixLength = 0
+
+        while (
+          prefixLength <
+            person.notes.length &&
+          prefixLength <
+            notes.length &&
+          person.notes[
+            prefixLength
+          ] === notes[prefixLength]
+        ) {
+          prefixLength += 1
+        }
+
+        let suffixLength = 0
+
+        while (
+          suffixLength <
+            person.notes.length -
+              prefixLength &&
+          suffixLength <
+            notes.length -
+              prefixLength &&
+          person.notes[
+            person.notes.length -
+              1 -
+              suffixLength
+          ] ===
+            notes[
+              notes.length -
+                1 -
+                suffixLength
+            ]
+        ) {
+          suffixLength += 1
+        }
+
+        const oldChangeEnd =
+          person.notes.length -
+          suffixLength
+
+        const changedSpan =
+          spans.find(
+            (span) =>
+              prefixLength >=
+                span.start &&
+              oldChangeEnd <=
+                span.end
+          )
+
+        if (changedSpan) {
+          const beforeChange =
+            person.notes.slice(
+              changedSpan.start,
+              prefixLength
+            )
+
+          const changedText =
+            notes.slice(
+              prefixLength,
+              notes.length -
+                suffixLength
+            )
+
+          const afterChange =
+            person.notes.slice(
+              oldChangeEnd,
+              changedSpan.end
+            )
+
+          const nextContributionText =
+            beforeChange +
+            changedText +
+            afterChange
+
+          if (
+            nextContributionText.trim()
+          ) {
+            await db.noteContributions.update(
+              changedSpan.id,
+              {
+                text:
+                  nextContributionText,
+                updatedAt: timestamp,
+              }
+            )
+          } else {
+            await db.noteContributions.delete(
+              changedSpan.id
+            )
+          }
+
+          await db.people.update(
+            personId,
+            {
+              notes,
+              updatedAt: timestamp,
+            }
+          )
+
+          return db.people.get(
+            personId
+          )
+        }
+      }
+
+      /*
+       * The edit crossed contribution
+       * boundaries. Replace the affected
+       * history with one consolidated
+       * manual contribution.
+       */
+      const contributionIds =
+        contributions.map(
+          (contribution) =>
+            contribution.id
+        )
+
+      await db.noteContributions
+        .where('id')
+        .anyOf(contributionIds)
+        .delete()
+
+      await db.noteContributions.add({
+        id: createId(),
+        campaignId:
+          person.campaignId,
+        targetType: 'person',
+        targetId: personId,
+        text: notes,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+
+      await db.people.update(
+        personId,
+        {
+          notes,
+          updatedAt: timestamp,
+        }
+      )
+
+      return db.people.get(
+        personId
+      )
+    }
+  )
 }
 
 export async function addPersonDestination(
@@ -1067,48 +1828,62 @@ const DEFAULT_DISCOVERY_CATEGORIES = [
 export async function ensureDefaultDiscoveryCategories(
   campaignId: string
 ) {
-  const existingCategories =
-    await db.discoveryCategories
-      .where('campaignId')
-      .equals(campaignId)
-      .toArray()
+  return db.transaction(
+    'rw',
+    [
+      db.campaigns,
+      db.discoveryCategories,
+    ],
+    async () => {
+      const existingCategories =
+        await db.discoveryCategories
+          .where('campaignId')
+          .equals(campaignId)
+          .toArray()
 
-  if (existingCategories.length > 0) {
-    return existingCategories.sort(
-      (a, b) =>
-        a.sortPosition - b.sortPosition
-    )
-  }
+      if (
+        existingCategories.length > 0
+      ) {
+        return existingCategories.sort(
+          (a, b) =>
+            a.sortPosition -
+            b.sortPosition
+        )
+      }
 
-  const campaign =
-    await db.campaigns.get(campaignId)
+      const campaign =
+        await db.campaigns.get(
+          campaignId
+        )
 
-  if (!campaign) {
-    throw new Error(
-      'Campaign not found.'
-    )
-  }
+      if (!campaign) {
+        throw new Error(
+          'Campaign not found.'
+        )
+      }
 
-  const timestamp =
-    new Date().toISOString()
+      const timestamp =
+        new Date().toISOString()
 
-  const categories =
-    DEFAULT_DISCOVERY_CATEGORIES.map(
-      (name, index) => ({
-        id: createId(),
-        campaignId,
-        name,
-        sortPosition: index,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      })
-    )
+      const categories =
+        DEFAULT_DISCOVERY_CATEGORIES.map(
+          (name, index) => ({
+            id: createId(),
+            campaignId,
+            name,
+            sortPosition: index,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })
+        )
 
-  await db.discoveryCategories.bulkAdd(
-    categories
+      await db.discoveryCategories.bulkAdd(
+        categories
+      )
+
+      return categories
+    }
   )
-
-  return categories
 }
 
 export async function getDiscoveryCategories(
@@ -1122,6 +1897,215 @@ export async function getDiscoveryCategories(
   return categories.sort(
     (a, b) =>
       a.sortPosition - b.sortPosition
+  )
+}
+
+export async function createDiscoveryCategory(
+  campaignId: string,
+  name: string
+) {
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    throw new Error(
+      'Category name is required.'
+    )
+  }
+
+  const campaign =
+    await db.campaigns.get(
+      campaignId
+    )
+
+  if (!campaign) {
+    throw new Error(
+      'Campaign not found.'
+    )
+  }
+
+  const existingCategories =
+    await db.discoveryCategories
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray()
+
+  const nextSortPosition =
+    existingCategories.length === 0
+      ? 0
+      : Math.max(
+          ...existingCategories.map(
+            (category) =>
+              category.sortPosition
+          )
+        ) + 1
+
+  const timestamp =
+    new Date().toISOString()
+
+  const category = {
+    id: createId(),
+    campaignId,
+    name: trimmedName,
+    sortPosition:
+      nextSortPosition,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.discoveryCategories.add(
+    category
+  )
+
+  return category
+}
+
+export async function renameDiscoveryCategory(
+  categoryId: string,
+  name: string
+) {
+  const trimmedName = name.trim()
+
+  if (!trimmedName) {
+    throw new Error(
+      'Category name is required.'
+    )
+  }
+
+  const category =
+    await db.discoveryCategories.get(
+      categoryId
+    )
+
+  if (!category) {
+    throw new Error(
+      'Category not found.'
+    )
+  }
+
+  await db.discoveryCategories.update(
+    categoryId,
+    {
+      name: trimmedName,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.discoveryCategories.get(
+    categoryId
+  )
+}
+
+export async function getDiscoveryCategoryUsage(
+  categoryId: string
+) {
+  const category =
+    await db.discoveryCategories.get(
+      categoryId
+    )
+
+  if (!category) {
+    throw new Error(
+      'Category not found.'
+    )
+  }
+
+  const permanentDiscoveries =
+    await db.discoveries
+      .where('campaignId')
+      .equals(category.campaignId)
+      .filter(
+        (discovery) =>
+          discovery.categoryId ===
+          categoryId
+      )
+      .count()
+
+  const matchingReviewDiscoveries =
+  await db.reviewDraftDiscoveries
+    .filter(
+      (discovery) =>
+        discovery.categoryRef ===
+        categoryId
+    )
+    .toArray()
+
+  const reviewDraftIds =
+    Array.from(
+      new Set(
+        matchingReviewDiscoveries.map(
+          (discovery) =>
+            discovery.reviewDraftId
+        )
+      )
+    )
+
+  const reviewDrafts =
+    await db.reviewDrafts.bulkGet(
+      reviewDraftIds
+    )
+
+  const openReviewDraftIds =
+    new Set(
+      reviewDrafts
+        .filter(
+          (reviewDraft) =>
+            reviewDraft?.status ===
+            'in_progress'
+        )
+        .map(
+          (reviewDraft) =>
+            reviewDraft!.id
+        )
+    )
+
+  const reviewDraftDiscoveries =
+    matchingReviewDiscoveries.filter(
+      (discovery) =>
+        openReviewDraftIds.has(
+          discovery.reviewDraftId
+        )
+    ).length
+
+  return {
+    permanentDiscoveries,
+    reviewDraftDiscoveries,
+    total:
+      permanentDiscoveries +
+      reviewDraftDiscoveries,
+  }
+}
+
+export async function deleteDiscoveryCategory(
+  categoryId: string
+) {
+  const category =
+    await db.discoveryCategories.get(
+      categoryId
+    )
+
+  if (!category) {
+    throw new Error(
+      'Category not found.'
+    )
+  }
+
+  const usage =
+    await getDiscoveryCategoryUsage(
+      categoryId
+    )
+
+  if (
+    usage.permanentDiscoveries > 0 ||
+    usage.reviewDraftDiscoveries > 0
+  ) {
+    throw new Error(
+      'Category is still in use.'
+    )
+  }
+
+  await db.discoveryCategories.delete(
+    categoryId
   )
 }
 
@@ -1143,6 +2127,497 @@ export async function getDiscovery(
 ) {
   return db.discoveries.get(
     discoveryId
+  )
+}
+
+export async function updateDiscoveryTitle(
+  discoveryId: string,
+  title: string
+) {
+  const discovery =
+    await db.discoveries.get(
+      discoveryId
+    )
+
+  if (!discovery) {
+    throw new Error(
+      'Discovery not found.'
+    )
+  }
+
+  const trimmedTitle =
+    title.trim()
+
+  if (!trimmedTitle) {
+    throw new Error(
+      'Discovery title cannot be empty.'
+    )
+  }
+
+  await db.discoveries.update(
+    discoveryId,
+    {
+      title: trimmedTitle,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.discoveries.get(
+    discoveryId
+  )
+}
+
+export async function updateDiscoveryCategory(
+  discoveryId: string,
+  categoryId: string
+) {
+  const discovery =
+    await db.discoveries.get(
+      discoveryId
+    )
+
+  if (!discovery) {
+    throw new Error(
+      'Discovery not found.'
+    )
+  }
+
+  const category =
+    await db.discoveryCategories.get(
+      categoryId
+    )
+
+  if (!category) {
+    throw new Error(
+      'Category not found.'
+    )
+  }
+
+  if (
+    category.campaignId !==
+    discovery.campaignId
+  ) {
+    throw new Error(
+      'Category belongs to another campaign.'
+    )
+  }
+
+  await db.discoveries.update(
+    discoveryId,
+    {
+      categoryId,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.discoveries.get(
+    discoveryId
+  )
+}
+
+export async function deleteDiscovery(
+  discoveryId: string
+) {
+  const discovery =
+    await db.discoveries.get(
+      discoveryId
+    )
+
+  if (!discovery) {
+    throw new Error(
+      'Discovery not found.'
+    )
+  }
+
+  await db.transaction(
+    'rw',
+    [
+      db.discoveries,
+      db.noteContributions,
+      db.entityRedirects,
+    ],
+    async () => {
+      const contributionIds =
+        (
+          await db.noteContributions
+            .where('targetId')
+            .equals(discoveryId)
+            .filter(
+              (contribution) =>
+                contribution.targetType ===
+                'discovery'
+            )
+            .toArray()
+        ).map(
+          (contribution) =>
+            contribution.id
+        )
+
+      if (
+        contributionIds.length > 0
+      ) {
+        await db.noteContributions
+          .where('id')
+          .anyOf(contributionIds)
+          .delete()
+      }
+
+      const redirects =
+        await db.entityRedirects
+          .filter(
+            (redirect) =>
+              redirect.entityType ===
+                'discovery' &&
+              (
+                redirect.obsoleteId ===
+                  discoveryId ||
+                redirect.survivorId ===
+                  discoveryId
+              )
+          )
+          .toArray()
+
+      const redirectIds =
+        redirects.map(
+          (redirect) =>
+            redirect.id
+        )
+
+      if (
+        redirectIds.length > 0
+      ) {
+        await db.entityRedirects
+          .where('id')
+          .anyOf(redirectIds)
+          .delete()
+      }
+
+      await db.discoveries.delete(
+        discoveryId
+      )
+    }
+  )
+}
+
+export async function updateDiscoveryNotes(
+  discoveryId: string,
+  notes: string
+) {
+  const discovery =
+    await db.discoveries.get(
+      discoveryId
+    )
+
+  if (!discovery) {
+    throw new Error(
+      'Discovery not found.'
+    )
+  }
+
+  if (
+    discovery.notes === notes
+  ) {
+    return discovery
+  }
+
+  return db.transaction(
+    'rw',
+    [
+      db.discoveries,
+      db.noteContributions,
+    ],
+    async () => {
+      const contributions =
+        (
+          await db.noteContributions
+            .where('targetId')
+            .equals(discoveryId)
+            .filter(
+              (contribution) =>
+                contribution.targetType ===
+                'discovery'
+            )
+            .toArray()
+        ).sort(
+          (a, b) =>
+            a.createdAt.localeCompare(
+              b.createdAt
+            )
+        )
+
+      const timestamp =
+        new Date().toISOString()
+
+      /*
+       * Same V1 behaviour as People:
+       * editing the visible combined Notes
+       * consolidates the existing contribution
+       * history into one manual contribution.
+       */
+      if (
+        contributions.length > 0
+      ) {
+        const contributionIds =
+          contributions.map(
+            (contribution) =>
+              contribution.id
+          )
+
+        await db.noteContributions
+          .where('id')
+          .anyOf(
+            contributionIds
+          )
+          .delete()
+      }
+
+      if (notes.trim()) {
+        await db.noteContributions.add({
+          id: createId(),
+          campaignId:
+            discovery.campaignId,
+          targetType:
+            'discovery',
+          targetId:
+            discoveryId,
+          text: notes,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        })
+      }
+
+      await db.discoveries.update(
+        discoveryId,
+        {
+          notes,
+          updatedAt: timestamp,
+        }
+      )
+
+      return db.discoveries.get(
+        discoveryId
+      )
+    }
+  )
+}
+
+export async function mergeDiscoveries(
+  survivorId: string,
+  obsoleteId: string
+) {
+  if (
+    survivorId === obsoleteId
+  ) {
+    throw new Error(
+      'Cannot merge a Discovery into itself.'
+    )
+  }
+
+  const [
+    survivor,
+    obsolete,
+  ] = await Promise.all([
+    db.discoveries.get(
+      survivorId
+    ),
+    db.discoveries.get(
+      obsoleteId
+    ),
+  ])
+
+  if (!survivor) {
+    throw new Error(
+      'Surviving Discovery not found.'
+    )
+  }
+
+  if (!obsolete) {
+    throw new Error(
+      'Discovery to merge not found.'
+    )
+  }
+
+  if (
+    survivor.campaignId !==
+    obsolete.campaignId
+  ) {
+    throw new Error(
+      'Discoveries belong to different Campaigns.'
+    )
+  }
+
+  return db.transaction(
+    'rw',
+    [
+      db.discoveries,
+      db.noteContributions,
+      db.entityRedirects,
+    ],
+    async () => {
+      const [
+        survivorContributions,
+        obsoleteContributions,
+      ] = await Promise.all([
+        db.noteContributions
+          .where('targetId')
+          .equals(survivorId)
+          .filter(
+            (contribution) =>
+              contribution.targetType ===
+                'discovery'
+          )
+          .toArray(),
+
+        db.noteContributions
+          .where('targetId')
+          .equals(obsoleteId)
+          .filter(
+            (contribution) =>
+              contribution.targetType ===
+                'discovery'
+          )
+          .toArray(),
+      ])
+
+      const timestamp =
+        new Date().toISOString()
+
+      /*
+       * Preserve legacy flat Notes
+       * if an older Discovery has no
+       * contribution records yet.
+       */
+      if (
+        survivor.notes &&
+        survivorContributions.length ===
+          0
+      ) {
+        const contribution = {
+          id: createId(),
+          campaignId:
+            survivor.campaignId,
+          targetType:
+            'discovery' as const,
+          targetId: survivorId,
+          text: survivor.notes,
+          createdAt:
+            survivor.createdAt,
+          updatedAt:
+            survivor.updatedAt,
+        }
+
+        await db.noteContributions.add(
+          contribution
+        )
+
+        survivorContributions.push(
+          contribution
+        )
+      }
+
+      if (
+        obsolete.notes &&
+        obsoleteContributions.length ===
+          0
+      ) {
+        const contribution = {
+          id: createId(),
+          campaignId:
+            obsolete.campaignId,
+          targetType:
+            'discovery' as const,
+          targetId: obsoleteId,
+          text: obsolete.notes,
+          createdAt:
+            obsolete.createdAt,
+          updatedAt:
+            obsolete.updatedAt,
+        }
+
+        await db.noteContributions.add(
+          contribution
+        )
+
+        obsoleteContributions.push(
+          contribution
+        )
+      }
+
+      for (
+        const contribution of
+        obsoleteContributions
+      ) {
+        await db.noteContributions.update(
+          contribution.id,
+          {
+            targetId: survivorId,
+          }
+        )
+      }
+
+      const combinedContributions = [
+        ...survivorContributions,
+        ...obsoleteContributions.map(
+          (contribution) => ({
+            ...contribution,
+            targetId: survivorId,
+          })
+        ),
+      ].sort((a, b) => {
+        const timeComparison =
+          a.createdAt.localeCompare(
+            b.createdAt
+          )
+
+        if (
+          timeComparison !== 0
+        ) {
+          return timeComparison
+        }
+
+        return a.id.localeCompare(
+          b.id
+        )
+      })
+
+      const combinedNotes =
+        combinedContributions
+          .map(
+            (contribution) =>
+              contribution.text
+          )
+          .filter(Boolean)
+          .join('\n')
+
+      await db.discoveries.update(
+        survivorId,
+        {
+          notes: combinedNotes,
+          updatedAt: timestamp,
+        }
+      )
+
+      await db.entityRedirects.add({
+        id: createId(),
+        campaignId:
+          survivor.campaignId,
+        entityType:
+          'discovery',
+        obsoleteId,
+        survivorId,
+        createdAt: timestamp,
+      })
+
+      await db.discoveries.delete(
+        obsoleteId
+      )
+
+      return db.discoveries.get(
+        survivorId
+      )
+    }
   )
 }
 
@@ -2091,10 +3566,16 @@ export async function getSessionsForEntry(
   targetType: 'person' | 'discovery',
   targetId: string
 ) {
+  const resolvedTargetId =
+    await resolveEntityRedirect(
+      targetType,
+      targetId
+    )
+
   const contributions =
     await db.noteContributions
       .where('targetId')
-      .equals(targetId)
+      .equals(resolvedTargetId)
       .filter(
         (contribution) =>
           contribution.campaignId ===
@@ -2164,6 +3645,31 @@ export async function updateSessionTitle(
     sessionId,
     {
       title,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.sessions.get(sessionId)
+}
+
+export async function updateSessionJournalText(
+  sessionId: string,
+  journalText: string
+) {
+  const session =
+    await db.sessions.get(sessionId)
+
+  if (!session) {
+    throw new Error(
+      'Session not found.'
+    )
+  }
+
+  await db.sessions.update(
+    sessionId,
+    {
+      journalText,
       updatedAt:
         new Date().toISOString(),
     }
@@ -2246,32 +3752,26 @@ export async function getOrCreateCharacter(
 
     strength: {
       score: null,
-      modifier: null,
     },
 
     dexterity: {
       score: null,
-      modifier: null,
     },
 
     constitution: {
       score: null,
-      modifier: null,
     },
 
     intelligence: {
       score: null,
-      modifier: null,
     },
 
     wisdom: {
       score: null,
-      modifier: null,
     },
 
     charisma: {
       score: null,
-      modifier: null,
     },
 
     currentHp: null,
@@ -3003,6 +4503,7 @@ export async function exportCampaign(
     discoveries,
     reviewDrafts,
     noteContributions,
+    entityRedirects,
   ] = await Promise.all([
     db.characters
       .where('campaignId')
@@ -3060,6 +4561,11 @@ export async function exportCampaign(
       .toArray(),
 
     db.noteContributions
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray(),
+
+    db.entityRedirects
       .where('campaignId')
       .equals(campaignId)
       .toArray(),
@@ -3175,6 +4681,7 @@ const [
       reviewDraftDiscoveries,
       reviewDestinations,
       noteContributions,
+      entityRedirects,
     },
   }
 }
@@ -3252,6 +4759,7 @@ export async function importCampaign(
       db.reviewDraftDiscoveries,
       db.reviewDestinations,
       db.noteContributions,
+      db.entityRedirects,
     ],
     async () => {
       await db.campaigns.add(
@@ -3401,6 +4909,14 @@ export async function importCampaign(
             data.noteContributions
           )
       }
+
+      if (
+        data.entityRedirects?.length
+      ) {
+        await db.entityRedirects.bulkAdd(
+          data.entityRedirects
+        )
+      }
     }
   )
 
@@ -3474,6 +4990,7 @@ export async function replaceCampaignFromBackup(
       db.reviewDraftDiscoveries,
       db.reviewDestinations,
       db.noteContributions,
+      db.entityRedirects,
     ],
     async () => {
       /*
@@ -3542,6 +5059,11 @@ export async function replaceCampaignFromBackup(
         .delete()
 
       await db.noteContributions
+        .where('campaignId')
+        .equals(campaignId)
+        .delete()
+
+      await db.entityRedirects
         .where('campaignId')
         .equals(campaignId)
         .delete()
@@ -3690,11 +5212,9 @@ export async function replaceCampaignFromBackup(
       }
 
       if (
-        data.discoveryCategories
-          ?.length
+        data.discoveryCategories?.length
       ) {
-        await db.discoveryCategories
-          .bulkAdd(
+        await db.discoveryCategories.bulkAdd(
             data.discoveryCategories
           )
       }
@@ -3718,53 +5238,51 @@ export async function replaceCampaignFromBackup(
       }
 
       if (
-        data.reviewDraftPeople
-          ?.length
+        data.reviewDraftPeople?.length
       ) {
-        await db.reviewDraftPeople
-          .bulkAdd(
+        await db.reviewDraftPeople.bulkAdd(
             data.reviewDraftPeople
           )
       }
 
       if (
-        data.reviewDraftCategories
-          ?.length
+        data.reviewDraftCategories?.length
       ) {
-        await db.reviewDraftCategories
-          .bulkAdd(
+        await db.reviewDraftCategories.bulkAdd(
             data.reviewDraftCategories
           )
       }
 
       if (
-        data.reviewDraftDiscoveries
-          ?.length
+        data.reviewDraftDiscoveries?.length
       ) {
-        await db.reviewDraftDiscoveries
-          .bulkAdd(
+        await db.reviewDraftDiscoveries.bulkAdd(
             data.reviewDraftDiscoveries
           )
       }
 
       if (
-        data.reviewDestinations
-          ?.length
+        data.reviewDestinations?.length
       ) {
-        await db.reviewDestinations
-          .bulkAdd(
+        await db.reviewDestinations.bulkAdd(
             data.reviewDestinations
           )
       }
 
       if (
-        data.noteContributions
-          ?.length
+        data.noteContributions?.length
       ) {
-        await db.noteContributions
-          .bulkAdd(
+        await db.noteContributions.bulkAdd(
             data.noteContributions
           )
+      }
+
+      if (
+        data.entityRedirects?.length
+      ) {
+        await db.entityRedirects.bulkAdd(
+          data.entityRedirects
+        )
       }
     }
   )

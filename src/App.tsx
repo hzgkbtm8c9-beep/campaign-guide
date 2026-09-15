@@ -176,7 +176,7 @@ function QuickNoteModal({
   return (
     <div className="modal-backdrop">
       <div className="quick-note-modal">
-        <h2>Quick Note</h2>
+        <h2 className="modal-title">Quick Note</h2>
 
         <p className="modal-subtitle">
           Session {session.sessionNumber}
@@ -199,7 +199,7 @@ function QuickNoteModal({
 
         <div className="modal-actions">
           <button
-            className="modal-cancel"
+            className="secondary-button"
             onClick={onClose}
             disabled={isSaving}
           >
@@ -587,29 +587,6 @@ function ReviewScreen({
       )
     }
   }, [destinations])
-
-  function handleWorkingTextChange(
-    newText: string
-  ) {
-    if (!currentItem) {
-      return
-    }
-
-    setItems(
-      (currentItems) =>
-        currentItems.map(
-          (item) =>
-            item.id ===
-            currentItem.id
-              ? {
-                  ...item,
-                  workingText:
-                    newText,
-                }
-              : item
-        )
-    )
-  }
 
   function handleDestinationTextChange(
     destinationId: string,
@@ -1284,6 +1261,58 @@ function ReviewScreen({
     )
   }
 
+  async function handleNext() {
+    await saveCurrentReviewState()
+
+    const summary =
+      await getReviewSummaryData(
+        reviewDraft.id
+      )
+
+    setSummaryEntries(summary)
+
+    /*
+     * Find the next unresolved
+     * Quick Note after the current
+     * position. Wrap back to the
+     * beginning when necessary.
+     */
+    for (
+      let offset = 1;
+      offset <= items.length;
+      offset += 1
+    ) {
+      const nextIndex =
+        (currentIndex + offset) %
+        items.length
+
+      const nextItem =
+        items[nextIndex]
+
+      const summaryEntry =
+        summary.find(
+          (entry) =>
+            entry.reviewItem.id ===
+            nextItem.id
+        )
+
+      if (
+        summaryEntry &&
+        !summaryEntry.isResolved
+      ) {
+        await goToIndex(nextIndex)
+        return
+      }
+    }
+
+    /*
+     * Nothing unresolved remains,
+     * so go directly to Summary.
+     */
+    setCompletionError('')
+    setShowSummary(true)
+  }
+
   async function handleOpenSummary() {
     setCompletionError('')
 
@@ -1394,14 +1423,14 @@ function ReviewScreen({
         style={textureVariables}
       >
         <button
-          className="review-back-button"
+          className="secondary-button compact-button review-empty-back-button"
           onClick={onClose}
         >
           ← Back to Today
         </button>
 
         <div className="review-panel">
-          <h1>
+          <h1 className="page-title">
             Session Review
           </h1>
 
@@ -1420,17 +1449,6 @@ function ReviewScreen({
         style={textureVariables}
       >
         <div className="review-header">
-          <button
-            className="review-back-button"
-            onClick={() => {
-              setCompletionError('')
-
-              setShowSummary(false)
-            }}
-          >
-            ← Return to Review
-          </button>
-
           <div>
             <strong>
               Session{' '}
@@ -1448,7 +1466,7 @@ function ReviewScreen({
         <div className="review-panel">
           <div className="review-title-row">
             <div>
-              <h1>
+              <h1 className="page-title">
                 Review Summary
               </h1>
 
@@ -1460,7 +1478,7 @@ function ReviewScreen({
             </div>
 
             <button
-              className="review-back-button summary-today-button"
+              className="secondary-button compact-button"
               onClick={
                 handleBackToToday
               }
@@ -1502,7 +1520,7 @@ function ReviewScreen({
                     </div>
 
                     <button
-                      className="review-button"
+                      className="secondary-button compact-button review-button"
                       onClick={() =>
                         void handleSummaryJump(
                           entry.reviewItem
@@ -1529,9 +1547,7 @@ function ReviewScreen({
                       )}
 
                       <div className="summary-section">
-                        <h3>
-                          Outcome
-                        </h3>
+                        <h3 className="subsection-title">Outcome</h3>
 
                         <p>
                           This Quick Note is
@@ -1543,9 +1559,7 @@ function ReviewScreen({
                     </>
                   ) : (
                     <div className="summary-section">
-                      <h3>
-                        Destinations
-                      </h3>
+                      <h3 className="subsection-title">Destinations</h3>
 
                       {entry.destinations
                         .length === 0 ? (
@@ -1589,9 +1603,7 @@ function ReviewScreen({
           </div>
 
           <div className="review-completion">
-            <h2>
-              Complete Review
-            </h2>
+            <h2 className="section-title">Complete Review</h2>
 
             {allItemsResolved ? (
               <p className="review-help">
@@ -1693,15 +1705,6 @@ function ReviewScreen({
       style={textureVariables}
     >
       <div className="review-header">
-        <button
-          className="review-back-button"
-          onClick={
-            handleBackToToday
-          }
-        >
-          ← Back to Today
-        </button>
-
         <div>
           <strong>
             Session{' '}
@@ -1724,7 +1727,7 @@ function ReviewScreen({
 
       <div className="review-panel">
         <div className="review-title-row">
-          <h1>
+          <h1 className="page-title">
             Session Review
           </h1>
 
@@ -1742,9 +1745,7 @@ function ReviewScreen({
         </div>
 
         <div className="review-block">
-          <h2>
-            Original Quick Note
-          </h2>
+          <h2 className="section-title">Original Quick Note</h2>
 
           <p className="original-note">
             {sourceNote.text}
@@ -1752,63 +1753,7 @@ function ReviewScreen({
         </div>
 
         <div className="review-block">
-          <h2>
-            Review Note
-          </h2>
-
-          <textarea
-            className="review-note-textarea"
-            value={
-              currentItem.workingText
-            }
-            onChange={(event) =>
-              handleWorkingTextChange(
-                event.target.value
-              )
-            }
-          />
-
-          <p className="review-help">
-            Edit this note before choosing
-            where it should be saved.
-            Changes are saved automatically.
-          </p>
-        </div>
-
-        <div className="review-block">
-          <div className="discard-row">
-            <div>
-              <h2>Discard</h2>
-
-              <p className="review-help">
-                Discard means this Quick
-                Note will create no
-                permanent contribution
-                when Review is completed.
-              </p>
-            </div>
-
-            <button
-              className={
-                currentItem.isDiscarded
-                  ? 'discard-button active'
-                  : 'discard-button'
-              }
-              onClick={() =>
-                void handleDiscardToggle()
-              }
-            >
-              {currentItem.isDiscarded
-                ? 'Undo Discard'
-                : 'Discard Quick Note'}
-            </button>
-          </div>
-        </div>
-
-        <div className="review-block">
-          <h2>
-            Destinations
-          </h2>
+          <h2 className="section-title">Destinations</h2>
 
           {isLoadingDestinations ? (
             <p className="review-help">
@@ -1817,17 +1762,15 @@ function ReviewScreen({
           ) : (
             <>
               <div>
-                <h3>Journal</h3>
+                <h3 className="subsection-title">Journal</h3>
 
                 {journalDestination ? (
                   <div className="destination-card">
                     <div className="destination-heading">
-                      <strong>
-                        Journal
-                      </strong>
+                      <span />
 
                       <button
-                        className="destination-remove"
+                        className="text-button"
                         onClick={() =>
                           void handleRemoveDestination(
                             journalDestination.id
@@ -1849,16 +1792,10 @@ function ReviewScreen({
                         )
                       }
                     />
-
-                    <p className="review-help">
-                      Journal text is
-                      independent from
-                      Working Text.
-                    </p>
                   </div>
                 ) : (
                   <button
-                    className="destination-add"
+                    className="primary-button compact-button destination-add"
                     onClick={() =>
                       void handleAddJournal()
                     }
@@ -1869,9 +1806,7 @@ function ReviewScreen({
               </div>
 
               <div className="person-destinations">
-                <h3>
-                  People
-                </h3>
+                <h3 className="subsection-title">People</h3>
 
                 {personDestinations.map(
                   (destination) => (
@@ -1889,7 +1824,7 @@ function ReviewScreen({
                         </strong>
 
                         <button
-                          className="destination-remove"
+                          className="text-button destination-remove"
                           onClick={() =>
                             void handleRemoveDestination(
                               destination.id
@@ -1911,20 +1846,13 @@ function ReviewScreen({
                           )
                         }
                       />
-
-                      <p className="review-help">
-                        This Person
-                        contribution is
-                        independent from
-                        Working Text.
-                      </p>
                     </div>
                   )
                 )}
 
                 {!showPersonPicker ? (
                   <button
-                    className="destination-add"
+                    className="primary-button compact-button destination-add"
                     onClick={() =>
                       setShowPersonPicker(
                         true
@@ -2033,7 +1961,7 @@ function ReviewScreen({
                       />
 
                       <button
-                        className="destination-add"
+                        className="primary-button compact-button destination-add"
                         onClick={() =>
                           void handleCreateDraftPerson()
                         }
@@ -2056,7 +1984,7 @@ function ReviewScreen({
                     )}
 
                     <button
-                      className="modal-cancel"
+                      className="secondary-button compact-button review-picker-cancel"
                       onClick={() => {
                         setShowPersonPicker(
                           false
@@ -2076,9 +2004,7 @@ function ReviewScreen({
               </div>
 
               <div className="discovery-destinations">
-                <h3>
-                  Discoveries
-                </h3>
+                <h3 className="subsection-title">Discoveries</h3>
 
                 {discoveryDestinations.map(
                   (destination) => (
@@ -2096,7 +2022,7 @@ function ReviewScreen({
                         </strong>
 
                         <button
-                          className="destination-remove"
+                          className="text-button destination-remove"
                           onClick={() =>
                             void handleRemoveDestination(
                               destination.id
@@ -2118,20 +2044,13 @@ function ReviewScreen({
                           )
                         }
                       />
-
-                      <p className="review-help">
-                        This Discovery
-                        contribution is
-                        independent from
-                        Working Text.
-                      </p>
                     </div>
                   )
                 )}
 
                 {!showDiscoveryPicker ? (
                   <button
-                    className="destination-add"
+                    className="primary-button compact-button destination-add"
                     onClick={() =>
                       setShowDiscoveryPicker(
                         true
@@ -2332,7 +2251,7 @@ function ReviewScreen({
                       </select>
 
                       <button
-                        className="destination-add"
+                        className="primary-button compact-button destination-add"
                         onClick={() =>
                           void handleCreateDraftDiscovery()
                         }
@@ -2366,7 +2285,7 @@ function ReviewScreen({
                       />
 
                       <button
-                        className="destination-add"
+                        className="primary-button compact-button destination-add"
                         onClick={() =>
                           void handleCreateDraftCategory()
                         }
@@ -2391,7 +2310,7 @@ function ReviewScreen({
                     )}
 
                     <button
-                      className="modal-cancel"
+                      className="secondary-button compact-button review-picker-cancel"
                       onClick={() => {
                         setShowDiscoveryPicker(
                           false
@@ -2419,9 +2338,39 @@ function ReviewScreen({
           )}
         </div>
 
+        <div className="review-block">
+          <div className="discard-row">
+            <div>
+              <h2 className="section-title">Discard</h2>
+
+              <p className="review-help">
+                Discard means this Quick
+                Note will create no
+                permanent contribution
+                when Review is completed.
+              </p>
+            </div>
+
+            <button
+              className={
+                currentItem.isDiscarded
+                  ? 'discard-button active'
+                  : 'discard-button'
+              }
+              onClick={() =>
+                void handleDiscardToggle()
+              }
+            >
+              {currentItem.isDiscarded
+                ? 'Undo Discard'
+                : 'Discard Quick Note'}
+            </button>
+          </div>
+        </div>
+
         <div className="review-navigation">
           <button
-            className="modal-cancel"
+            className="secondary-button"
             onClick={() =>
               void goToIndex(
                 currentIndex - 1
@@ -2437,13 +2386,7 @@ function ReviewScreen({
           <button
             className="primary-button"
             onClick={() =>
-              void goToIndex(
-                currentIndex + 1
-              )
-            }
-            disabled={
-              currentIndex ===
-              items.length - 1
+              void handleNext()
             }
           >
             Next
@@ -2451,7 +2394,14 @@ function ReviewScreen({
         </div>
         <div className="review-summary-action">
           <button
-            className="review-button"
+            className="secondary-button compact-button"
+            onClick={handleBackToToday}
+          >
+            Back to Today
+          </button>
+
+          <button
+            className="secondary-button compact-button review-button"
             onClick={() =>
               void handleOpenSummary()
             }
@@ -2629,7 +2579,7 @@ function TodayPage({
   return (
     <>
       <section className="page left-page today-session-page distress-a">
-        <h1>
+        <h1 className="page-title">
           Today's Adventure
         </h1>
 
@@ -2638,7 +2588,7 @@ function TodayPage({
         </p>
 
         <div className="page-section today-session-section">
-          <h2>Session</h2>
+          <h2 className="section-title">Session</h2>
 
         <div className="today-illustration">
           <img
@@ -2706,9 +2656,7 @@ function TodayPage({
             0 ? (
             <>
               <div className="open-reviews">
-                <h3>
-                  Open Reviews
-                </h3>
+                <h3 className="subsection-title">Open Reviews</h3>
 
                 {openReviews.map(
                   (session) => (
@@ -2733,7 +2681,7 @@ function TodayPage({
                       </span>
 
                       <button
-                        className="review-button"
+                        className="secondary-button compact-button review-button"
                         onClick={() =>
                           onOpenReview(
                             session
@@ -2800,9 +2748,7 @@ function TodayPage({
       <section className="page right-page today-reference-page distress-d">
         <div className="page-section today-goals-section">
           <div className="today-section-heading">
-            <h2>
-              Active Goals
-            </h2>
+            <h2 className="section-title">Active Goals</h2>
 
             <button
               type="button"
@@ -2823,7 +2769,7 @@ function TodayPage({
                   className="today-goal-item"
                   key={label}
                 >
-                  <strong>
+                  <strong className="subsection-title today-item-title">
                     {label}
                   </strong>
 
@@ -2845,9 +2791,7 @@ function TodayPage({
 
         <div className="page-section today-reminders-section">
           <div className="today-section-heading">
-            <h2>
-              Reminders
-            </h2>
+            <h2 className="section-title">Reminders</h2>
 
             <button
               type="button"
@@ -2869,7 +2813,7 @@ function TodayPage({
                     className="today-reminder-item"
                     key={reminder.id}
                   >
-                    <strong>
+                    <strong className="subsection-title today-item-title">
                       {reminder.title ||
                         'Untitled Reminder'}
                     </strong>
@@ -2892,14 +2836,14 @@ function TodayPage({
 
         <div className="today-switch-campaign">
           <button
-            className="switch-campaign-button"
+            className="secondary-button compact-button switch-campaign-button"
             onClick={onSwitchCampaign}
           >
             Switch Campaign
           </button>
 
           <button
-            className="switch-campaign-button"
+            className="secondary-button compact-button switch-campaign-button"
             onClick={() =>
               void onExportCampaign()
             }
@@ -2907,7 +2851,7 @@ function TodayPage({
             Export Campaign
           </button>
 
-          <label className="switch-campaign-button">
+          <label className="secondary-button compact-button switch-campaign-button">
             Import Campaign
 
             <input
@@ -3103,7 +3047,7 @@ function CampaignSetup({
               ? 'Creating…'
               : 'Create Campaign'}
           </button>
-          <label className="setup-import-button">
+          <label className="secondary-button compact-button setup-import-button">
             Import Existing Campaign
 
             <input
@@ -3128,7 +3072,7 @@ function CampaignSetup({
           </label>
           <button
             type="button"
-            className="setup-cancel-button"
+            className="secondary-button compact-button setup-cancel-button"
             onClick={onCancel}
           >
             Cancel
@@ -3210,7 +3154,7 @@ function CampaignChooser({
 
                   <button
                     type="button"
-                    className="campaign-delete-button"
+                    className="destructive-button campaign-delete-button"
                     onClick={() => {
                       void onDelete(campaign)
                     }}
@@ -3231,7 +3175,7 @@ function CampaignChooser({
             Create New Campaign
           </button>
 
-          <label className="setup-import-button">
+          <label className="secondary-button compact-button setup-import-button">
             Import Existing Campaign
 
             <input

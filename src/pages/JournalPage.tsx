@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import type {
   Campaign,
@@ -7,7 +11,14 @@ import type {
 
 import {
   getCompletedSessions,
+  updateSessionJournalText,
+  updateSessionTitle,
 } from '../data/repository'
+
+import {
+  SaveStatus,
+  type SaveStatusState,
+} from '../components/SaveStatus'
 
 export default function JournalPage({
   campaign,
@@ -28,6 +39,29 @@ export default function JournalPage({
     isLoading,
     setIsLoading,
   ] = useState(true)
+
+  const [
+    journalDraft,
+    setJournalDraft,
+  ] = useState('')
+
+  const [
+    titleDraft,
+    setTitleDraft,
+  ] = useState('')
+
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState('')
+
+  const journalEditorRef =
+    useRef<HTMLTextAreaElement | null>(
+      null
+    )
+
+  const [saveStatus, setSaveStatus] =
+    useState<SaveStatusState>('saved')
 
   useEffect(() => {
     async function loadJournal() {
@@ -57,11 +91,144 @@ export default function JournalPage({
         selectedSessionId
     )
 
+  useEffect(() => {
+    setJournalDraft(
+      selectedSession?.journalText ?? ''
+    )
+
+    setTitleDraft(
+      selectedSession?.title ?? ''
+    )
+  }, [selectedSessionId])
+
+  useEffect(() => {
+    const editor =
+      journalEditorRef.current
+
+    if (!editor) {
+      return
+    }
+
+    editor.style.height = 'auto'
+    editor.style.height =
+      `${editor.scrollHeight}px`
+  }, [journalDraft])
+
+  useEffect(() => {
+    if (!selectedSessionId) {
+      return
+    }
+
+    const timeout = window.setTimeout(
+      async () => {
+        try {
+          setSaveStatus('saving')
+
+          await updateSessionJournalText(
+            selectedSessionId,
+            journalDraft
+          )
+
+          setSessions((current) =>
+            current.map((session) =>
+              session.id === selectedSessionId
+                ? {
+                    ...session,
+                    journalText:
+                      journalDraft,
+                  }
+                : session
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Journal text.',
+            error
+          )
+          setSaveStatus('error')
+        }
+      },
+      400
+    )
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [journalDraft, selectedSessionId])
+
+  useEffect(() => {
+    if (!selectedSessionId) {
+      return
+    }
+
+    const timeout = window.setTimeout(
+      async () => {
+        try {
+          setSaveStatus('saving')
+
+          await updateSessionTitle(
+            selectedSessionId,
+            titleDraft
+          )
+
+          setSessions((current) =>
+            current.map((session) =>
+              session.id === selectedSessionId
+                ? {
+                    ...session,
+                    title: titleDraft,
+                  }
+                : session
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Journal title.',
+            error
+          )
+          setSaveStatus('error')
+        }
+      },
+      400
+    )
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [titleDraft, selectedSessionId])
+
+const normalizedSearch =
+  searchQuery.trim().toLowerCase()
+
+const filteredSessions =
+  normalizedSearch
+    ? sessions.filter((session) => {
+        const title =
+          session.title.toLowerCase()
+
+        const journalText =
+          session.journalText.toLowerCase()
+
+        return (
+          title.includes(
+            normalizedSearch
+          ) ||
+          journalText.includes(
+            normalizedSearch
+          )
+        )
+      })
+    : sessions
+
   if (isLoading) {
     return (
       <>
         <section className="page left-page">
-          <h1>Journal</h1>
+          <h1 className="page-title">Journal</h1>
 
           <p className="subtitle">
             Loading Journal…
@@ -76,20 +243,47 @@ export default function JournalPage({
   return (
     <>
       <section className="page left-page distress-f journal-page">
-        <h1>Journal</h1>
+        <div className="page-heading-with-status">
+          <div>
+            <h1 className="page-title">
+              Journal
+            </h1>
 
-        <p className="subtitle">
-          Completed Sessions from{' '}
-          {campaign.name}
-        </p>
+            <p className="subtitle">
+              Completed Sessions from{' '}
+              {campaign.name}
+            </p>
+          </div>
+
+          <SaveStatus
+            status={saveStatus}
+          />
+        </div>
+
+        <input
+          type="search"
+          className="discoveries-search"
+          value={searchQuery}
+          onChange={(event) =>
+            setSearchQuery(
+              event.target.value
+            )
+          }
+          placeholder="Search Journal…"
+          aria-label="Search Journal"
+        />
 
         {sessions.length === 0 ? (
           <p className="empty-message">
             No completed Sessions yet.
           </p>
+        ) : filteredSessions.length === 0 ? (
+          <p className="empty-message">
+            No Journal matches found.
+          </p>
         ) : (
           <div className="journal-list">
-            {sessions.map(
+            {filteredSessions.map(
               (session) => (
                 <button
                   key={session.id}
@@ -124,40 +318,43 @@ export default function JournalPage({
       <section className="page right-page distress-c journal-page journal-detail-page">
         {selectedSession ? (
           <>
-            <h1>
+            <h1 className="detail-title">
               Session{' '}
-              {
-                selectedSession.sessionNumber
-              }
+              {selectedSession.sessionNumber}
             </h1>
 
-            <p className="subtitle">
-              {selectedSession.title ||
-                'Untitled Session'}
-            </p>
+            <input
+              type="text"
+              className="journal-title-editor"
+              value={titleDraft}
+              onChange={(event) =>
+                setTitleDraft(
+                  event.target.value
+                )
+              }
+              placeholder="Untitled Session"
+              aria-label="Session title"
+            />
 
             <div className="page-section">
-              <h2>Journal Entry</h2>
+              <h2 className="section-title">Journal Entry</h2>
 
-              {selectedSession.journalText ? (
-                <p className="journal-entry-text">
-                  {
-                    selectedSession.journalText
-                  }
-                </p>
-              ) : (
-                <p className="empty-message">
-                  No Journal text was
-                  committed for this Session.
-                </p>
-              )}
+              <textarea
+                ref={journalEditorRef}
+                className="journal-entry-text journal-entry-editor"
+                value={journalDraft}
+                onChange={(event) =>
+                  setJournalDraft(
+                    event.target.value
+                  )
+                }
+                placeholder="No Journal text was committed for this Session."
+              />
             </div>
           </>
         ) : (
           <div className="page-section">
-            <h2>
-              No Session selected
-            </h2>
+            <p className="empty-message">No Session selected</p>
           </div>
         )}
       </section>

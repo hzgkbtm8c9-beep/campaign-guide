@@ -1,11 +1,18 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react'
 
 import {
+  deletePerson,
+  getNoteContributions,
   getPeople,
   getSessionsForEntry,
+  mergePeople,
+  updatePersonName,
+  updatePersonDescription,
+  updatePersonNotes,
 } from '../data/repository'
 
 import type {
@@ -13,6 +20,13 @@ import type {
   Person,
   Session,
 } from '../data/database'
+
+import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
+
+import {
+  SaveStatus,
+  type SaveStatusState,
+} from '../components/SaveStatus'
 
 export default function PeoplePage({
   campaign,
@@ -34,12 +48,65 @@ export default function PeoplePage({
   ] = useState<Session[]>([])
 
   const [
+    notesDraft,
+    setNotesDraft,
+  ] = useState('')
+
+  const notesEditorRef =
+    useRef<HTMLTextAreaElement | null>(null)
+
+  useAutoGrowTextarea(
+    notesEditorRef,
+    notesDraft
+  )
+
+  const [
+    descriptionDraft,
+    setDescriptionDraft,
+  ] = useState('')
+
+  const descriptionEditorRef =
+    useRef<HTMLTextAreaElement | null>(
+      null
+    )
+
+  useAutoGrowTextarea(
+    descriptionEditorRef,
+    descriptionDraft
+  )
+
+  const [
+    nameDraft,
+    setNameDraft,
+  ] = useState('')
+
+  const [
+    mergeTargetId,
+    setMergeTargetId,
+  ] = useState('')
+
+  const [
+    showMergePreview,
+    setShowMergePreview,
+  ] = useState(false)
+  
+  const [
+    mergePreviewNotes,
+    setMergePreviewNotes,
+  ] = useState('')
+
+  const [
     showAllSessions,
     setShowAllSessions,
   ] = useState(false)
 
   const [isLoading, setIsLoading] =
     useState(true)
+
+  const [
+    searchQuery,
+    setSearchQuery,
+  ] = useState('')
 
   useEffect(() => {
     async function loadPeople() {
@@ -66,29 +133,241 @@ export default function PeoplePage({
         person.id === selectedPersonId
     )
 
+  const mergeTarget =
+    people.find(
+      (person) =>
+        person.id === mergeTargetId
+    )
+
   useEffect(() => {
-    async function loadSessionInfo() {
+    async function loadPersonInfo() {
       if (!selectedPerson) {
         setRelatedSessions([])
+        setNotesDraft('')
+        setDescriptionDraft('')
+        setNameDraft('')
+        setMergeTargetId('')
         return
       }
 
-      const sessions =
-        await getSessionsForEntry(
+      const [
+        sessions,
+        contributions,
+      ] = await Promise.all([
+        getSessionsForEntry(
           campaign.id,
           'person',
           selectedPerson.id
-        )
+        ),
+
+        getNoteContributions(
+          'person',
+          selectedPerson.id
+        ),
+      ])
 
       setRelatedSessions(sessions)
+
+      const contributionText =
+        contributions
+          .map(
+            (contribution) =>
+              contribution.text
+          )
+          .filter(Boolean)
+          .join('\n')
+
+      setNotesDraft(
+        selectedPerson.notes ||
+          contributionText
+      )
+
+      setDescriptionDraft(
+        selectedPerson.description ?? ''
+      )
+
+      setNameDraft(
+        selectedPerson.name
+      )
+
       setShowAllSessions(false)
     }
 
-    void loadSessionInfo()
+    void loadPersonInfo()
   }, [
     campaign.id,
-    selectedPerson,
+    selectedPersonId,
   ])
+
+  const [saveStatus, setSaveStatus] =
+  useState<SaveStatusState>('saved')
+
+  useEffect(() => {
+    if (!selectedPersonId) {
+      return
+    }
+
+    const timeout =
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
+
+          await updatePersonNotes(
+            selectedPersonId,
+            notesDraft
+          )
+
+          setPeople((current) =>
+            current.map((person) =>
+              person.id === selectedPersonId
+                ? {
+                    ...person,
+                    notes: notesDraft,
+                  }
+                : person
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Person notes.',
+            error
+          )
+          setSaveStatus('error')
+        }
+      }, 400)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [
+    notesDraft,
+    selectedPersonId,
+  ])
+
+  useEffect(() => {
+    if (!selectedPersonId) {
+      return
+    }
+
+    const timeout =
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
+
+          await updatePersonDescription(
+            selectedPersonId,
+            descriptionDraft
+          )
+
+          setPeople((current) =>
+            current.map((person) =>
+              person.id === selectedPersonId
+                ? {
+                    ...person,
+                    description:
+                      descriptionDraft,
+                  }
+                : person
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Person description.',
+            error
+          )
+          setSaveStatus('error')
+        }
+      }, 400)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [
+    descriptionDraft,
+    selectedPersonId,
+  ])
+
+  useEffect(() => {
+    if (!selectedPersonId) {
+      return
+    }
+
+    const trimmedName =
+      nameDraft.trim()
+
+    if (!trimmedName) {
+      return
+    }
+
+    const timeout =
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
+
+          await updatePersonName(
+            selectedPersonId,
+            trimmedName
+          )
+
+          setPeople((current) =>
+            current
+              .map((person) =>
+                person.id === selectedPersonId
+                  ? {
+                      ...person,
+                      name:
+                        trimmedName,
+                    }
+                  : person
+              )
+              .sort((a, b) =>
+                a.name.localeCompare(
+                  b.name
+                )
+              )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Person name.',
+            error
+          )
+          setSaveStatus('error')
+        }
+      }, 400)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [
+    nameDraft,
+    selectedPersonId,
+  ])
+
+  const normalizedSearch =
+    searchQuery.trim().toLowerCase()
+
+  const filteredPeople =
+    normalizedSearch
+      ? people.filter((person) => {
+          const searchableText = [
+            person.name,
+            person.description ?? '',
+            person.notes ?? '',
+          ]
+            .join(' ')
+            .toLowerCase()
+
+          return searchableText.includes(
+            normalizedSearch
+          )
+        })
+      : people
 
   const visibleSessions =
     showAllSessions
@@ -99,7 +378,7 @@ export default function PeoplePage({
     return (
       <>
         <section className="page left-page">
-          <h1>People</h1>
+          <h1 className="page-title">People</h1>
 
           <p className="subtitle">
             Loading People…
@@ -113,20 +392,43 @@ export default function PeoplePage({
 
   return (
     <>
-      <section className="page left-page distress-d">
-        <h1>People</h1>
+      <section className="page left-page distress-d people-page">
+        <div className="page-heading-with-status">
+          <div>
+            <h1 className="page-title">People</h1>
 
-        <p className="subtitle">
-          People known in {campaign.name}
-        </p>
+            <p className="subtitle">
+              People known in {campaign.name}
+            </p>
+          </div>
 
-        {people.length === 0 ? (
+          <SaveStatus
+            status={saveStatus}
+            className="person-save-status"
+          />
+        </div>
+
+        <input
+          className="people-search"
+          type="search"
+          value={searchQuery}
+          onChange={(event) =>
+            setSearchQuery(
+              event.target.value
+            )
+          }
+          placeholder="Search People…"
+        />
+
+        {filteredPeople.length === 0 ? (
           <p className="empty-message">
-            No People have been added yet.
+            {people.length === 0
+              ? 'No People have been added yet.'
+              : 'No matching People found.'}
           </p>
         ) : (
           <div className="people-list">
-            {people.map((person) => (
+            {filteredPeople.map((person) => (
               <button
                 key={person.id}
                 className={
@@ -147,36 +449,264 @@ export default function PeoplePage({
         )}
       </section>
 
-      <section className="page right-page distress-a">
+      <section className="page right-page distress-a people-page people-detail-page">
         {selectedPerson ? (
           <>
-            <h1>{selectedPerson.name}</h1>
+            <div className="person-heading-row">
+              <input
+                className="person-name-editor"
+                value={nameDraft}
+                onChange={(event) =>
+                  setNameDraft(
+                    event.target.value
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="destructive-button person-delete-button"
+              onClick={() => {
+                const confirmed =
+                  window.confirm(
+                    `Delete ${selectedPerson.name}?`
+                  )
 
-            <div className="page-section">
-              <h2>Description</h2>
+                if (!confirmed) {
+                  return
+                }
 
-              <p>
-                {selectedPerson.description ||
-                  'No description yet.'}
-              </p>
+                void deletePerson(
+                  selectedPerson.id
+                ).then(() => {
+                  setPeople((current) =>
+                    current.filter(
+                      (person) =>
+                        person.id !==
+                        selectedPerson.id
+                    )
+                  )
+
+                  setSelectedPersonId(
+                    undefined
+                  )
+                })
+              }}
+            >
+              Delete Person
+            </button>
             </div>
+            {people.length > 1 && (
+              <div className="person-merge-controls">
+                <select
+                  value={mergeTargetId}
+                  onChange={(event) =>
+                    setMergeTargetId(
+                      event.target.value
+                    )
+                  }
+                >
+                  <option value="">
+                    Merge with…
+                  </option>
 
-            <div className="page-section">
-              <h2>Notes</h2>
+                  {people
+                    .filter(
+                      (person) =>
+                        person.id !==
+                        selectedPerson.id
+                    )
+                    .map((person) => (
+                      <option
+                        key={person.id}
+                        value={person.id}
+                      >
+                        {person.name}
+                      </option>
+                    ))}
+                </select>
 
-              {selectedPerson.notes ? (
-                <p className="person-notes">
-                  {selectedPerson.notes}
-                </p>
-              ) : (
-                <p className="empty-message">
-                  No notes yet.
-                </p>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={!mergeTargetId}
+                  onClick={() => {
+                    if (!mergeTarget) {
+                      return
+                    }
+
+                    void Promise.all([
+                      getNoteContributions(
+                        'person',
+                        selectedPerson.id
+                      ),
+                      getNoteContributions(
+                        'person',
+                        mergeTarget.id
+                      ),
+                    ]).then(
+                      ([
+                        survivorContributions,
+                        targetContributions,
+                      ]) => {
+                        const contributions = [
+                          ...survivorContributions,
+                          ...targetContributions,
+                        ].sort((a, b) => {
+                          const timeComparison =
+                            a.createdAt.localeCompare(
+                              b.createdAt
+                            )
+
+                          if (timeComparison !== 0) {
+                            return timeComparison
+                          }
+
+                          return a.id.localeCompare(b.id)
+                        })
+
+                        setMergePreviewNotes(
+                          contributions
+                            .map(
+                              (contribution) =>
+                                contribution.text
+                            )
+                            .filter(Boolean)
+                            .join('\n')
+                        )
+
+                        setShowMergePreview(true)
+                      }
+                    )
+                  }}
+                >
+                  Merge
+                </button>
+              </div>
+            )}
+            {showMergePreview &&
+              mergeTarget && (
+                <div
+                  className="person-merge-modal-backdrop"
+                  onClick={() =>
+                    setShowMergePreview(false)
+                  }
+                >
+                  <div
+                    className="person-merge-modal"
+                    onClick={(event) =>
+                      event.stopPropagation()
+                    }
+                  >
+                    <h2 className="modal-title">Merge Preview</h2>
+
+                    <p>
+                      <strong>
+                        {selectedPerson.name}
+                      </strong>{' '}
+                      will remain.
+                    </p>
+
+                    <p>
+                      <strong>
+                        {mergeTarget.name}
+                      </strong>{' '}
+                      will be merged into it.
+                    </p>
+
+                    <div className="person-merge-modal-section">
+                      <h3 className="subsection-title">Combined Notes</h3>
+
+                      <div className="person-merge-notes-preview">
+                        {mergePreviewNotes ||
+                          'No notes to merge.'}
+                      </div>
+                    </div>
+
+                    <div className="person-merge-preview-actions">
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() =>
+                          setShowMergePreview(false)
+                        }
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => {
+                          void mergePeople(
+                            selectedPerson.id,
+                            mergeTarget.id
+                          ).then(async (mergedPerson) => {
+                            const refreshed =
+                              await getPeople(
+                                campaign.id
+                              )
+
+                            setPeople(refreshed)
+
+                            if (mergedPerson) {
+                              setNotesDraft(
+                                mergedPerson.notes
+                              )
+                            }
+
+                            const sessions =
+                              await getSessionsForEntry(
+                                campaign.id,
+                                'person',
+                                selectedPerson.id
+                              )
+
+                            setRelatedSessions(sessions)
+                            setMergeTargetId('')
+                            setShowMergePreview(false)
+                          })
+                        }}
+                      >
+                        Merge
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
+            <div className="page-section">
+              <h2 className="section-title">Description</h2>
+
+              <textarea
+                ref={descriptionEditorRef}
+                className="writing-textarea person-description-editor"
+                value={descriptionDraft}
+                onChange={(event) =>
+                  setDescriptionDraft(
+                    event.target.value
+                  )
+                }
+                placeholder="No description yet."
+              />
             </div>
 
             <div className="page-section">
-              <h2>Sessions</h2>
+              <h2 className="section-title">Notes</h2>
+
+              <textarea
+                ref={notesEditorRef}
+                className="writing-textarea person-notes person-notes-editor"
+                value={notesDraft}
+                onChange={(event) =>
+                  setNotesDraft(
+                    event.target.value
+                  )
+                }
+                placeholder="No notes yet."
+              />
+            </div>
+
+            <div className="page-section">
+              <h2 className="section-title">Sessions</h2>
 
               {visibleSessions.length > 0 ? (
                 <>
@@ -224,7 +754,7 @@ export default function PeoplePage({
           </>
         ) : (
           <div className="page-section">
-            <h2>No Person selected</h2>
+            <p className="empty-message">No Person selected</p>
           </div>
         )}
       </section>

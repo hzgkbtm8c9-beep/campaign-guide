@@ -16,8 +16,9 @@ import type {
   Campaign,
   Character,
   EquipmentItem,
-  CharacterAttribute,
 } from '../data/database'
+
+import { SaveStatus } from '../components/SaveStatus'
 
 type AttributeKey =
   | 'strength'
@@ -74,6 +75,25 @@ function numberFromInput(
   }
 
   return parsed
+}
+
+function getShadowdarkModifier(
+  score: number | null
+) {
+  if (score === null) {
+    return null
+  }
+
+  if (score <= 3) return -4
+  if (score <= 5) return -3
+  if (score <= 7) return -2
+  if (score <= 9) return -1
+  if (score <= 11) return 0
+  if (score <= 13) return 1
+  if (score <= 15) return 2
+  if (score <= 17) return 3
+
+  return 4
 }
 
 export default function CharacterPage({
@@ -426,8 +446,6 @@ export default function CharacterPage({
 
   function updateAttribute(
     key: AttributeKey,
-    field:
-      keyof CharacterAttribute,
     value: string
   ) {
     setCharacter(
@@ -439,8 +457,7 @@ export default function CharacterPage({
         return {
           ...current,
           [key]: {
-            ...current[key],
-            [field]:
+            score:
               numberFromInput(
                 value
               ),
@@ -548,7 +565,7 @@ export default function CharacterPage({
     return (
       <>
         <section className="page left-page">
-          <h1>
+          <h1 className="page-title">
             Character
           </h1>
 
@@ -566,7 +583,7 @@ export default function CharacterPage({
     return (
       <>
         <section className="page left-page">
-          <h1>
+          <h1 className="page-title">
             Character
           </h1>
 
@@ -611,13 +628,10 @@ export default function CharacterPage({
             <span className="character-name-label">
               <span>Character Name</span>
 
-              <span className="character-save-status">
-                {saveStatus === 'saving'
-                  ? 'Saving…'
-                  : saveStatus === 'error'
-                    ? 'Save error'
-                    : 'Saved'}
-              </span>
+              <SaveStatus
+                status={saveStatus}
+                className="character-save-status"
+              />
             </span>
 
             <input
@@ -768,7 +782,7 @@ export default function CharacterPage({
             </div>
 
         <div className="character-section">
-        <h2>Attributes</h2>
+        <h2 className="section-title">Attributes</h2>
 
         <div className="attribute-grid">
             {attributes.map((attribute) => (
@@ -776,7 +790,7 @@ export default function CharacterPage({
                 className="attribute-card"
                 key={attribute.key}
             >
-                <strong>
+                <strong className="attribute-name">
                 {attribute.label}
                 </strong>
 
@@ -793,7 +807,6 @@ export default function CharacterPage({
                     onChange={(event) =>
                     updateAttribute(
                         attribute.key,
-                        'score',
                         event.target.value
                     )
                     }
@@ -801,23 +814,31 @@ export default function CharacterPage({
                 </label>
 
                 <label>
-                <span>Mod</span>
+                  <span>Mod</span>
 
-                <input
-                    type="number"
+                  <input
+                    type="text"
                     value={
-                    character[
-                        attribute.key
-                    ].modifier ?? ''
+                      (() => {
+                        const modifier =
+                          getShadowdarkModifier(
+                            character[
+                              attribute.key
+                            ].score
+                          )
+
+                        if (modifier === null) {
+                          return ''
+                        }
+
+                        return modifier >= 0
+                          ? `+${modifier}`
+                          : `${modifier}`
+                      })()
                     }
-                    onChange={(event) =>
-                    updateAttribute(
-                        attribute.key,
-                        'modifier',
-                        event.target.value
-                    )
-                    }
-                />
+                    readOnly
+                    aria-label={`${attribute.label} modifier`}
+                  />
                 </label>
             </div>
             ))}
@@ -825,7 +846,7 @@ export default function CharacterPage({
         </div>
 
         <div className="character-section">
-          <h2>Combat</h2>
+          <h2 className="section-title">Combat</h2>
 
           <div className="combat-layout">
             <div className="combat-stats">
@@ -894,7 +915,7 @@ export default function CharacterPage({
 
       <section className="page right-page character-page distress-e">
         <div className="character-section character-section-first">
-          <h2>Talents / Spells</h2>
+          <h2 className="section-title">Talents / Spells</h2>
 
           <textarea
             className="talents-textarea"
@@ -912,7 +933,7 @@ export default function CharacterPage({
           <div className="gear-currency-row">
             <div className="gear-area">
               <div className="gear-heading-row">
-                <h2>Gear</h2>
+                <h2 className="section-title">Gear</h2>
 
                 <label className="gear-capacity">
                   <span>Capacity</span>
@@ -1108,7 +1129,7 @@ export default function CharacterPage({
           </div>
           </div>
           <div className="character-currency gear-currency-side">
-            <h2>Currency</h2>
+            <h2 className="section-title">Currency</h2>
 
             <div className="currency-stack">
               <label className="character-field">

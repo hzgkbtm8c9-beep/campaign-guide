@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react'
 
@@ -14,6 +15,9 @@ import type {
   Campaign,
   Reminder,
 } from '../data/database'
+
+import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
+import { SaveStatus } from '../components/SaveStatus'
 
 export default function RemindersPage({
   campaign,
@@ -41,6 +45,11 @@ export default function RemindersPage({
   ] = useState<
     'saved' | 'saving' | 'error'
   >('saved')
+
+  const reminderNotesRef =
+  useRef<HTMLTextAreaElement | null>(
+    null
+  )
 
   useEffect(() => {
     async function loadReminders() {
@@ -77,6 +86,11 @@ export default function RemindersPage({
       (reminder) =>
         reminder.id ===
         selectedReminderId
+    )
+
+    useAutoGrowTextarea(
+      reminderNotesRef,
+      selectedReminder?.content ?? ''
     )
 
   async function handleAddReminder() {
@@ -228,7 +242,7 @@ export default function RemindersPage({
     return (
       <>
         <section className="page left-page">
-          <h1>Reminders</h1>
+          <h1 className="page-title">Reminders</h1>
 
           <p className="subtitle">
             Loading Reminders…
@@ -243,28 +257,23 @@ export default function RemindersPage({
   return (
     <>
       <section className="page left-page reminders-page distress-b">
-        <div className="reminders-heading">
+        <div className="page-heading-with-status">
           <div>
-            <h1>Reminders</h1>
+            <h1 className="page-title">Reminders</h1>
 
             <p className="subtitle">
               Useful things to keep close
             </p>
           </div>
 
-          <span className="reminder-save-status">
-            {saveStatus ===
-            'saving'
-              ? 'Saving…'
-              : saveStatus ===
-                  'error'
-                ? 'Save error'
-                : 'Saved'}
-          </span>
+          <SaveStatus
+            status={saveStatus}
+            className="reminder-save-status"
+          />
         </div>
 
         <button
-          className="reminder-add-button"
+          className="primary-button compact-button reminder-add-button"
           onClick={() =>
             void handleAddReminder()
           }
@@ -307,75 +316,64 @@ export default function RemindersPage({
         {selectedReminder ? (
           <>
             <div className="reminder-editor-heading">
-                <label className="reminder-title-field">
-                    <span>Title</span>
+              <div className="reminder-heading-row">
+                <input
+                  className="detail-title reminder-title-editor"
+                  value={selectedReminder.title}
+                  onChange={(event) =>
+                    changeSelectedReminder({
+                      title: event.target.value,
+                    })
+                  }
+                  placeholder="Reminder title"
+                />
 
-                    <input
-                    value={selectedReminder.title}
-                    onChange={(event) =>
-                        changeSelectedReminder({
-                        title: event.target.value,
-                        })
-                    }
-                    placeholder="Reminder title"
-                    />
-                </label>
-                </div>
+                <button
+                  className="destructive-button reminder-delete-button"
+                  onClick={() =>
+                    void handleDelete()
+                  }
+                >
+                  Delete Reminder
+                </button>
+              </div>
+            </div>
 
                 <div className="reminder-editor">
-                  <label className="character-field reminder-summary-field">
-                    <span>
-                      Today Summary
-                    </span>
+                  <div className="page-section reminder-summary-field">
+                    <h2 className="section-title">Today Summary</h2>
 
                     <input
-                      value={
-                        selectedReminder.todaySummary
-                      }
+                      value={selectedReminder.todaySummary}
                       onChange={(event) =>
                         changeSelectedReminder({
-                          todaySummary:
-                            event.target.value,
+                          todaySummary: event.target.value,
                         })
                       }
                       placeholder="Short phrase shown on Today"
                     />
-                  </label>
+                  </div>
 
-                  <label className="character-field reminder-content-field">
-                    <span>
-                      Notes
-                    </span>
+                  <div className="page-section reminder-content-field">
+                    <h2 className="section-title">Notes</h2>
 
                     <textarea
-                      value={
-                        selectedReminder.content
-                      }
+                      ref={reminderNotesRef}
+                      className="writing-textarea"
+                      value={selectedReminder.content}
                       onChange={(event) =>
-                        changeSelectedReminder(
-                          {
-                            content:
-                              event.target.value,
-                          }
-                        )
+                        changeSelectedReminder({
+                          content: event.target.value,
+                        })
                       }
                       placeholder="Write the full reminder details here…"
                     />
-                  </label>
-
-              <button
-                className="reminder-delete-button"
-                onClick={() =>
-                  void handleDelete()
-                }
-              >
-                Delete Reminder
-              </button>
+                  </div>
             </div>
           </>
         ) : (
           <div>
-            <h1>Reminders</h1>
+            <h1 className="page-title">Reminders</h1>
 
             <p className="subtitle">
               Add a Reminder to get started.

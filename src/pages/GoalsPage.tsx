@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react'
 
@@ -17,6 +18,9 @@ import type {
   Goal,
   GoalTerm,
 } from '../data/database'
+
+import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
+import { SaveStatus } from '../components/SaveStatus'
 
 const goalSections: {
   term: GoalTerm
@@ -105,6 +109,36 @@ export default function GoalsPage({
         goal.id ===
         selectedGoalId
     )
+
+  const goalEditorRef =
+    useRef<HTMLTextAreaElement | null>(
+      null
+    )
+
+  const measureEditorRef =
+    useRef<HTMLTextAreaElement | null>(
+      null
+    )
+
+  const downsideEditorRef =
+    useRef<HTMLTextAreaElement | null>(
+      null
+    )
+
+  useAutoGrowTextarea(
+    goalEditorRef,
+    selectedGoal?.goal ?? ''
+  )
+
+  useAutoGrowTextarea(
+    measureEditorRef,
+    selectedGoal?.howToMeasure ?? ''
+  )
+
+  useAutoGrowTextarea(
+    downsideEditorRef,
+    selectedGoal?.downside ?? ''
+  )
 
   async function handleAddGoal(
     term: GoalTerm
@@ -339,7 +373,7 @@ export default function GoalsPage({
     return (
       <>
         <section className="page left-page">
-          <h1>Goals</h1>
+          <h1 className="page-title">Goals</h1>
 
           <p className="subtitle">
             Loading Goals…
@@ -354,24 +388,19 @@ export default function GoalsPage({
   return (
     <>
       <section className="page left-page goals-page distress-c">
-        <div className="goals-heading">
+        <div className="page-heading-with-status">
           <div>
-            <h1>Goals</h1>
+            <h1 className="page-title">Goals</h1>
 
             <p className="subtitle">
               What matters next
             </p>
           </div>
 
-          <span className="goal-save-status">
-            {saveStatus ===
-            'saving'
-              ? 'Saving…'
-              : saveStatus ===
-                  'error'
-                ? 'Save error'
-                : 'Saved'}
-          </span>
+          <SaveStatus
+            status={saveStatus}
+            className="goal-save-status"
+          />
         </div>
 
         {goalSections.map(
@@ -391,19 +420,15 @@ export default function GoalsPage({
                 key={section.term}
               >
                 <div className="goal-term-heading">
-                  <h2>
-                    {section.title}
-                  </h2>
+                  <h2 className="section-title">{section.title}</h2>
 
                   <button
-                    className="goal-add-button"
+                    className="primary-button compact-button goal-add-button"
                     onClick={() =>
-                      void handleAddGoal(
-                        section.term
-                      )
+                      void handleAddGoal(section.term)
                     }
                   >
-                    + Add
+                    + Add Goal
                   </button>
                 </div>
 
@@ -456,9 +481,7 @@ export default function GoalsPage({
             'completed'
         ) && (
           <div className="goal-term-section completed-goals-section">
-            <h2>
-              Completed
-            </h2>
+            <h2 className="section-title">Completed</h2>
 
             <div className="goal-list">
               {goals
@@ -497,115 +520,45 @@ export default function GoalsPage({
         {selectedGoal ? (
           <>
             <div className="goal-editor-heading">
-              <div>
-                <h1>
-                  {selectedGoal.title ||
-                    'New Goal'}
-                </h1>
+              <div className="goal-heading-row">
+                <input
+                  className="detail-title goal-title-editor"
+                  value={selectedGoal.title}
+                  onChange={(event) =>
+                    changeSelectedGoal({
+                      title: event.target.value,
+                    })
+                  }
+                  placeholder="New Goal"
+                />
 
-                <p className="subtitle">
-                  {selectedGoal.status ===
-                  'completed'
-                    ? 'Completed'
-                    : selectedGoal.hasSetback
-                      ? 'Active — Setback'
-                      : 'Active'}
-                </p>
+                <button
+                  className="destructive-button goal-delete-button"
+                  onClick={() =>
+                    void handleDelete()
+                  }
+                >
+                  Delete Goal
+                </button>
               </div>
+
+              <p className="subtitle">
+                {selectedGoal.status === 'completed'
+                  ? 'Completed'
+                  : selectedGoal.hasSetback
+                    ? 'Active — Setback'
+                    : 'Active'}
+              </p>
             </div>
 
             <div className="goal-editor">
-              <div className="goal-editor-top">
-                <label className="character-field">
-                  <span>
-                    Title
-                  </span>
-
-                  <input
-                    value={
-                      selectedGoal.title
-                    }
-                    onChange={(event) =>
-                      changeSelectedGoal(
-                        {
-                          title:
-                            event.target
-                              .value,
-                        }
-                      )
-                    }
-                    placeholder="Short name for this goal"
-                  />
-                </label>
-
-                <label className="character-field">
-                  <span>
-                    Term
-                  </span>
-
-                  <select
-                    className="goal-term-select"
-                    value={
-                      selectedGoal.term
-                    }
-                    onChange={(event) =>
-                      changeSelectedGoal(
-                        {
-                          term:
-                            event.target
-                              .value as GoalTerm,
-                        }
-                      )
-                    }
-                  >
-                    <option value="short">
-                      Short Term
-                    </option>
-
-                    <option value="mid">
-                      Mid Term
-                    </option>
-
-                    <option value="long">
-                      Long Term
-                    </option>
-                  </select>
-                </label>
-              </div>
-              
-              {/*
-              <label className="character-field goal-notes-field">
-                <span>
-                  Background
-                </span>
+              <div className="page-section goal-notes-field">
+                <h2 className="section-title">Goal </h2>
 
                 <textarea
-                  value={
-                    selectedGoal.background
-                  }
-                  onChange={(event) =>
-                    changeSelectedGoal(
-                      {
-                        background:
-                          event.target
-                            .value,
-                      }
-                    )
-                  }
-                  placeholder="Why does this matter? What led to this goal?"
-                />
-              </label>
-              */}
-              
-              <label className="character-field goal-notes-field">
-                <span>
-                  Goal
-                </span>
-
-                <textarea
-                  value={
-                    selectedGoal.goal
-                  }
+                  ref={goalEditorRef}
+                  className="writing-textarea"
+                  value={selectedGoal.goal}
                   onChange={(event) =>
                     changeSelectedGoal(
                       {
@@ -617,17 +570,15 @@ export default function GoalsPage({
                   }
                   placeholder="What are you actually trying to achieve?"
                 />
-              </label>
+              </div>
 
-              <label className="character-field goal-notes-field">
-                <span>
-                  How to Measure
-                </span>
+              <div className="page-section goal-notes-field">
+                <h2 className="section-title">How to Measure</h2>
 
                 <textarea
-                  value={
-                    selectedGoal.howToMeasure
-                  }
+                  ref={measureEditorRef}
+                  className="writing-textarea"
+                  value={selectedGoal.howToMeasure}
                   onChange={(event) =>
                     changeSelectedGoal(
                       {
@@ -639,17 +590,15 @@ export default function GoalsPage({
                   }
                   placeholder="What actions, events or outcomes count as progress?"
                 />
-              </label>
+              </div>
 
-              <label className="character-field goal-notes-field">
-                <span>
-                  Downside
-                </span>
+              <div className="page-section goal-notes-field">
+                <h2 className="section-title">Downside</h2>
 
                 <textarea
-                  value={
-                    selectedGoal.downside
-                  }
+                  ref={downsideEditorRef}
+                  className="writing-textarea"
+                  value={selectedGoal.downside}
                   onChange={(event) =>
                     changeSelectedGoal(
                       {
@@ -661,66 +610,51 @@ export default function GoalsPage({
                   }
                   placeholder="What is at risk if this goes badly or is not achieved?"
                 />
-              </label>
+              </div>
 
-              <label className="goal-setback-toggle">
-                <input
-                  type="checkbox"
-                  checked={
-                    selectedGoal.hasSetback
-                  }
-                  onChange={(event) =>
-                    changeSelectedGoal(
-                      {
-                        hasSetback:
-                          event.target
-                            .checked,
+              <div className="goal-bottom-actions">
+                <div className="goal-actions">
+                  {selectedGoal.status === 'active' ? (
+                    <button
+                      className="primary-button compact-button goal-complete-button"
+                      onClick={() =>
+                        void handleComplete()
                       }
-                    )
-                  }
-                />
-
-                <span>
-                  Setback
-                </span>
-              </label>
-
-              <div className="goal-actions">
-                {selectedGoal.status ===
-                'active' ? (
-                  <button
-                    className="goal-complete-button"
-                    onClick={() =>
-                      void handleComplete()
+                    >
+                      Complete Goal
+                    </button>
+                  ) : (
+                    <button
+                      className="primary-button compact-button goal-reopen-button"
+                      onClick={() =>
+                        void handleReopen()
+                      }
+                    >
+                      Reopen Goal
+                    </button>
+                  )}
+                </div>
+                <label className="goal-setback-toggle">
+                  <input
+                    type="checkbox"
+                    checked={selectedGoal.hasSetback}
+                    onChange={(event) =>
+                      changeSelectedGoal({
+                        hasSetback: event.target.checked,
+                      })
                     }
-                  >
-                    Complete Goal
-                  </button>
-                ) : (
-                  <button
-                    className="goal-reopen-button"
-                    onClick={() =>
-                      void handleReopen()
-                    }
-                  >
-                    Reopen Goal
-                  </button>
-                )}
+                  />
 
-                <button
-                  className="goal-delete-button"
-                  onClick={() =>
-                    void handleDelete()
-                  }
-                >
-                  Delete
-                </button>
+                  <span>
+                    Setback
+                  </span>
+                </label>
               </div>
             </div>
           </>
         ) : (
           <div className="goal-no-selection">
-            <h1>Goals</h1>
+            <h1 className="page-title">Goals</h1>
 
             <p className="subtitle">
               Add a Short, Mid or Long
