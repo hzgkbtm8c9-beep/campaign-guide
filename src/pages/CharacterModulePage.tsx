@@ -23,6 +23,7 @@ import {
 } from '../data/repository'
 
 import { WritingTextarea } from '../components/WritingTextarea'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 import {
   SaveStatus,
@@ -187,19 +188,24 @@ function CharacterModulePage({
     <>
       <section className="page left-page distress-b">
         <div className="page-heading-with-status">
-            <div>
-                <h1 className="page-title">
+            <div className="page-heading-copy">
+            <h1 className="page-title">
                 Ferret
-                </h1>
+            </h1>
 
-                <p className="subtitle">
-                Small Animal Companion
-                </p>
+            <p className="page-intro">
+                Small paws, sharp instincts,
+                questionable priorities.
+            </p>
             </div>
 
-            <SaveStatus
+                        <div className="page-heading-actions">
+              <SaveStatus
                 status={saveStatus}
-            />
+              />
+
+              <GuideHelpButton topicId="ferret" />
+            </div>
             </div>
 
         {isLoading ? (

@@ -793,7 +793,7 @@ export async function createPerson(
     id: createId(),
     campaignId,
     name: trimmedName,
-    description: '',
+    relationship: 'unknown' as const,
     notes: '',
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -1203,9 +1203,15 @@ export async function deletePerson(
   )
 }
 
-export async function updatePersonDescription(
+export async function updatePersonRelationship(
   personId: string,
-  description: string
+  relationship:
+    | 'unknown'
+    | 'stranger'
+    | 'ally'
+    | 'neutral'
+    | 'rival'
+    | 'foe'
 ) {
   const person =
     await db.people.get(personId)
@@ -1219,7 +1225,7 @@ export async function updatePersonDescription(
   await db.people.update(
     personId,
     {
-      description,
+      relationship,
       updatedAt:
         new Date().toISOString(),
     }
@@ -3278,7 +3284,7 @@ export async function completeReview(
           campaignId:
             reviewDraft.campaignId,
           name: draftPerson.name,
-          description: '',
+          relationship: 'unknown' as const,
           notes: '',
           createdAt: timestamp,
           updatedAt: timestamp,

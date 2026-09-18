@@ -8,6 +8,7 @@ import CharacterPage from './pages/CharacterPage'
 import CharacterModulePage from './pages/CharacterModulePage'
 import GoalsPage from './pages/GoalsPage'
 import RemindersPage from './pages/RemindersPage'
+import GuidePage from './pages/GuidePage'
 import todayIllustration from './assets/today/Campaign guide image2.png'
 import leatherTexture from './assets/textures/leather-texture.png'
 import paperTexture from './assets/textures/paper-texture.png'
@@ -83,6 +84,8 @@ import {
   Bookmark,
   BookOpen,
 } from 'lucide-react'
+
+import GuideHelpButton from './components/GuideHelpButton'
 
 type Section =
   | 'today'
@@ -1732,17 +1735,21 @@ function ReviewScreen({
             Session Review
           </h1>
 
-          <span
-            className={
-              currentItemResolved
-                ? 'resolution-badge resolved'
-                : 'resolution-badge unresolved'
-            }
-          >
-            {currentItemResolved
-              ? 'Resolved'
-              : 'Unresolved'}
-          </span>
+          <div className="page-heading-actions">
+            <span
+              className={
+                currentItemResolved
+                  ? 'resolution-badge resolved'
+                  : 'resolution-badge unresolved'
+              }
+            >
+              {currentItemResolved
+                ? 'Resolved'
+                : 'Unresolved'}
+            </span>
+
+            <GuideHelpButton topicId="review" />
+          </div>
         </div>
 
         <div className="review-block">
@@ -2411,6 +2418,8 @@ function ReviewScreen({
           </button>
         </div>
       </div>
+
+      <div id="modal-host" />
     </main>
   )
 }
@@ -2580,13 +2589,21 @@ function TodayPage({
   return (
     <>
       <section className="page left-page today-session-page distress-a">
-        <h1 className="page-title">
-          Today's Adventure
-        </h1>
+                <div className="page-heading-with-status">
+          <div>
+            <h1 className="page-title">
+              Today's Adventure
+            </h1>
 
-        <p className="subtitle today-campaign-name">
-          {campaign.name}
-        </p>
+            <p className="section-title today-campaign-name">
+              {campaign.name}
+            </p>
+          </div>
+
+          <div className="page-heading-actions">
+            <GuideHelpButton topicId="today" />
+          </div>
+        </div>
 
         <div className="page-section today-session-section">
           <h2 className="section-title">Session</h2>
@@ -2837,14 +2854,14 @@ function TodayPage({
 
         <div className="today-switch-campaign">
           <button
-            className="secondary-button compact-button switch-campaign-button"
+            className="text-button switch-campaign-button"
             onClick={onSwitchCampaign}
           >
             Switch Campaign
           </button>
 
           <button
-            className="secondary-button compact-button switch-campaign-button"
+            className="text-button switch-campaign-button"
             onClick={() =>
               void onExportCampaign()
             }
@@ -2852,7 +2869,7 @@ function TodayPage({
             Export Campaign
           </button>
 
-          <label className="secondary-button compact-button switch-campaign-button">
+          <label className="text-button switch-campaign-button">
             Import Campaign
 
             <input
@@ -2914,7 +2931,7 @@ function PlaceholderPage({
       <section className="page left-page">
         <h1>{title}</h1>
 
-        <p className="subtitle">
+        <p className="empty-message">
           This section will be
           built in a later stage.
         </p>
@@ -3227,6 +3244,22 @@ function CampaignApp({
     useState<Section>(
       'today'
     )
+
+  const [
+    journalSessionId,
+    setJournalSessionId,
+  ] = useState<string | undefined>()
+
+  function openJournalSession(
+    sessionId: string
+  ) {
+    setJournalSessionId(undefined)
+
+    window.setTimeout(() => {
+      setJournalSessionId(sessionId)
+      setActiveSection('journal')
+    }, 0)
+  }
 
   const bookWrapperRef =
     useRef<HTMLDivElement>(null)
@@ -3763,19 +3796,24 @@ function CampaignApp({
         ) : activeSection === 'people' ? (
           <PeoplePage
             campaign={campaign}
+            onOpenSession={openJournalSession}
           />
         ) : activeSection === 'discoveries' ? (
           <DiscoveriesPage
             campaign={campaign}
+            onOpenSession={openJournalSession}
           />
         ) : activeSection === 'journal' ? (
           <JournalPage
             campaign={campaign}
+            initialSessionId={journalSessionId}
           />
         ) : activeSection === 'reminders' ? (
           <RemindersPage
             campaign={campaign}
           />
+        ) : activeSection === 'guide' ? (
+          <GuidePage />
         ) : (
           <PlaceholderPage
             title={activeLabel}
@@ -3783,6 +3821,7 @@ function CampaignApp({
         )}
       </div>
     </main>
+    <div id="modal-host" />
   </div>
 </div>
 </div>
@@ -3992,6 +4031,183 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
+===== C:\Users\mayit\OneDrive\Skrivebord\Campaign Guide\src\components\GuideHelp.tsx =====
+import Modal from './Modal'
+import {
+  guideTopics,
+  type GuideTopicId,
+} from '../data/guideTopics'
+
+export default function GuideHelp({
+  topicId,
+  onClose,
+}: {
+  topicId: GuideTopicId
+  onClose: () => void
+}) {
+  const topic =
+    guideTopics.find(
+      (item) => item.id === topicId
+    ) ?? guideTopics[0]
+
+  return (
+    <Modal onClose={onClose}>
+      <h2
+        id="guide-help-title"
+        className="modal-title"
+      >
+        {topic.title}
+      </h2>
+
+            <div className="page-section">
+        <h3 className="section-title">
+          Purpose
+        </h3>
+
+        <p>{topic.purpose}</p>
+      </div>
+
+      <div className="page-section">
+        <h3 className="section-title">
+          How it works
+        </h3>
+
+        <ul>
+          {topic.howItWorks.map(
+            (item) => (
+              <li key={item}>
+                {item}
+              </li>
+            )
+          )}
+        </ul>
+      </div>
+
+      <div className="modal-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={onClose}
+        >
+          Close
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+===== C:\Users\mayit\OneDrive\Skrivebord\Campaign Guide\src\components\GuideHelpButton.tsx =====
+import { useState } from 'react'
+import GuideHelp from './GuideHelp'
+import type { GuideTopicId } from '../data/guideTopics'
+
+export default function GuideHelpButton({
+  topicId,
+}: {
+  topicId: GuideTopicId
+}) {
+  const [isOpen, setIsOpen] =
+    useState(false)
+
+  return (
+    <>
+      <button
+        type="button"
+        className="guide-help-button"
+        aria-label="Open guide help"
+        title="Guide help"
+        onClick={() => setIsOpen(true)}
+      >
+        i
+      </button>
+
+      {isOpen && (
+        <GuideHelp
+          topicId={topicId}
+          onClose={() =>
+            setIsOpen(false)
+          }
+        />
+      )}
+    </>
+  )
+}
+
+===== C:\Users\mayit\OneDrive\Skrivebord\Campaign Guide\src\components\Modal.tsx =====
+import {
+  type ReactNode,
+} from 'react'
+import { createPortal } from 'react-dom'
+
+export default function Modal({
+  children,
+  onClose,
+  className = 'standard-modal',
+}: {
+  children: ReactNode
+  onClose?: () => void
+  className?: string
+}) {
+  const modalHost =
+    document.getElementById(
+      'modal-host'
+    )
+
+  if (!modalHost) {
+    return null
+  }
+
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onClick={onClose}
+    >
+      <div
+        className={className}
+        role="dialog"
+        aria-modal="true"
+        onClick={(event) =>
+          event.stopPropagation()
+        }
+      >
+        {children}
+      </div>
+    </div>,
+    modalHost
+  )
+}
+
+===== C:\Users\mayit\OneDrive\Skrivebord\Campaign Guide\src\components\SaveStatus.tsx =====
+export type SaveStatusState =
+  | 'saved'
+  | 'saving'
+  | 'error'
+
+export function SaveStatus({
+  status,
+  className = '',
+}: {
+  status: SaveStatusState
+  className?: string
+}) {
+  const text =
+    status === 'saving'
+      ? 'Saving…'
+      : status === 'error'
+        ? 'Save error'
+        : 'Saved'
+
+  return (
+    <span
+      className={`save-status ${className}`.trim()}
+      role="status"
+      aria-live="polite"
+    >
+      {text}
+    </span>
+  )
+}
+
 ===== C:\Users\mayit\OneDrive\Skrivebord\Campaign Guide\src\components\WritingTextarea.tsx =====
 import {
   useRef,
@@ -4052,6 +4268,12 @@ import {
 } from '../data/repository'
 
 import { WritingTextarea } from '../components/WritingTextarea'
+import GuideHelpButton from '../components/GuideHelpButton'
+
+import {
+  SaveStatus,
+  type SaveStatusState,
+} from '../components/SaveStatus'
 
 function CharacterModulePage({
   campaign,
@@ -4077,6 +4299,9 @@ function CharacterModulePage({
     isLoading,
     setIsLoading,
   ] = useState(true)
+
+  const [saveStatus, setSaveStatus] =
+    useState<SaveStatusState>('saved')
 
   useEffect(() => {
     let isCancelled = false
@@ -4156,23 +4381,35 @@ function CharacterModulePage({
 
   async function handleNameChange(
     value: string
-  ) {
+    ) {
     if (!characterModule) {
-      return
+        return
     }
 
-    const updatedData =
-      await updateFerretModuleData(
-        characterModule.id,
-        {
-          name: value,
-        }
-      )
+    try {
+        setSaveStatus('saving')
 
-    setFerretData(
-      updatedData ?? null
-    )
-  }
+        const updatedData =
+        await updateFerretModuleData(
+            characterModule.id,
+            {
+            name: value,
+            }
+        )
+
+        setFerretData(
+        updatedData ?? null
+        )
+
+        setSaveStatus('saved')
+    } catch (error) {
+        console.error(
+        'Could not save companion name.',
+        error
+        )
+        setSaveStatus('error')
+    }
+    }
 
   async function handleAddAbility() {
     if (!characterModule) {
@@ -4195,11 +4432,25 @@ function CharacterModulePage({
   return (
     <>
       <section className="page left-page distress-b">
-        <h1 className="page-title">Ferret</h1>
+        <div className="page-heading-with-status">
+            <div>
+                <h1 className="page-title">
+                Ferret
+                </h1>
 
-        <p className="subtitle">
-          Small Animal Companion
-        </p>
+                <p className="subtitle">
+                Small Animal Companion
+                </p>
+            </div>
+
+                        <div className="page-heading-actions">
+              <SaveStatus
+                status={saveStatus}
+              />
+
+              <GuideHelpButton topicId="ferret" />
+            </div>
+            </div>
 
         {isLoading ? (
           <p className="empty-message">
@@ -4223,29 +4474,41 @@ function CharacterModulePage({
             </label>
 
             <label className="companion-description-field">
-              <span className="companion-ability-description-label">Description</span>
+              <span className="section-title companion-description-title">Description</span>
 
               <WritingTextarea
                 className="companion-description-editor"
                 value={ferretData.description}
                 onChange={async (event) => {
-                  if (!characterModule) {
-                    return
-                  }
+                    if (!characterModule) {
+                        return
+                    }
 
-                  const updatedData =
-                    await updateFerretModuleData(
-                      characterModule.id,
-                      {
-                        description:
-                          event.target.value,
-                      }
-                    )
+                    try {
+                        setSaveStatus('saving')
 
-                  setFerretData(
-                    updatedData ?? null
-                  )
-                }}
+                        const updatedData =
+                        await updateFerretModuleData(
+                            characterModule.id,
+                            {
+                            description:
+                                event.target.value,
+                            }
+                        )
+
+                        setFerretData(
+                        updatedData ?? null
+                        )
+
+                        setSaveStatus('saved')
+                    } catch (error) {
+                        console.error(
+                        'Could not save companion description.',
+                        error
+                        )
+                        setSaveStatus('error')
+                    }
+                    }}
               />
             </label>
 
@@ -4273,22 +4536,34 @@ function CharacterModulePage({
                         : 'companion-state-button'
                     }
                     onClick={async () => {
-                      if (!characterModule) {
-                        return
-                      }
+                        if (!characterModule) {
+                            return
+                        }
 
-                      const updatedData =
-                        await updateFerretModuleData(
-                          characterModule.id,
-                          {
-                            relationship: value,
-                          }
-                        )
+                        try {
+                            setSaveStatus('saving')
 
-                      setFerretData(
-                        updatedData ?? null
-                      )
-                    }}
+                            const updatedData =
+                            await updateFerretModuleData(
+                                characterModule.id,
+                                {
+                                relationship: value,
+                                }
+                            )
+
+                            setFerretData(
+                            updatedData ?? null
+                            )
+
+                            setSaveStatus('saved')
+                        } catch (error) {
+                            console.error(
+                            'Could not save companion relationship.',
+                            error
+                            )
+                            setSaveStatus('error')
+                        }
+                        }}
                   >
                     {label}
                   </button>
@@ -4318,22 +4593,34 @@ function CharacterModulePage({
                         : 'companion-state-button'
                     }
                     onClick={async () => {
-                      if (!characterModule) {
-                        return
-                      }
+                        if (!characterModule) {
+                            return
+                        }
 
-                      const updatedData =
-                        await updateFerretModuleData(
-                          characterModule.id,
-                          {
-                            hunger: value,
-                          }
-                        )
+                        try {
+                            setSaveStatus('saving')
 
-                      setFerretData(
-                        updatedData ?? null
-                      )
-                    }}
+                            const updatedData =
+                            await updateFerretModuleData(
+                                characterModule.id,
+                                {
+                                hunger: value,
+                                }
+                            )
+
+                            setFerretData(
+                            updatedData ?? null
+                            )
+
+                            setSaveStatus('saved')
+                        } catch (error) {
+                            console.error(
+                            'Could not save companion hunger.',
+                            error
+                            )
+                            setSaveStatus('error')
+                        }
+                        }}
                   >
                     {label}
                   </button>
@@ -4390,28 +4677,40 @@ function CharacterModulePage({
                         value={ability.name}
                         placeholder="Ability name"
                         onChange={async (event) => {
-                        const updatedAbility =
-                            await updateFerretAbility(
-                            ability.id,
-                            {
-                                name:
-                                event.target.value,
+                            try {
+                                setSaveStatus('saving')
+
+                                const updatedAbility =
+                                await updateFerretAbility(
+                                    ability.id,
+                                    {
+                                    name: event.target.value,
+                                    }
+                                )
+
+                                if (!updatedAbility) {
+                                setSaveStatus('error')
+                                return
+                                }
+
+                                setFerretAbilities(
+                                (current) =>
+                                    current.map((item) =>
+                                    item.id === updatedAbility.id
+                                        ? updatedAbility
+                                        : item
+                                    )
+                                )
+
+                                setSaveStatus('saved')
+                            } catch (error) {
+                                console.error(
+                                'Could not save companion ability name.',
+                                error
+                                )
+                                setSaveStatus('error')
                             }
-                            )
-
-                        if (!updatedAbility) {
-                            return
-                        }
-
-                        setFerretAbilities(
-                            (current) =>
-                            current.map((item) =>
-                                item.id === updatedAbility.id
-                                ? updatedAbility
-                                : item
-                            )
-                        )
-                        }}
+                            }}
                     />
 
                     <button
@@ -4444,8 +4743,8 @@ function CharacterModulePage({
                     </button>
                     </div>
 
-                    <label className="companion-ability-description-label">
-                    DESCRIPTION
+                    <label className="subsection-title companion-ability-description-label">
+                    Description
                     </label>
 
                     <WritingTextarea
@@ -4453,28 +4752,41 @@ function CharacterModulePage({
                     value={ability.description}
                     placeholder="Ability description"
                     onChange={async (event) => {
-                        const updatedAbility =
-                        await updateFerretAbility(
-                            ability.id,
-                            {
-                            description:
-                                event.target.value,
-                            }
-                        )
+                        try {
+                            setSaveStatus('saving')
 
-                        if (!updatedAbility) {
-                        return
-                        }
-
-                        setFerretAbilities(
-                        (current) =>
-                            current.map((item) =>
-                            item.id === updatedAbility.id
-                                ? updatedAbility
-                                : item
+                            const updatedAbility =
+                            await updateFerretAbility(
+                                ability.id,
+                                {
+                                description:
+                                    event.target.value,
+                                }
                             )
-                        )
-                    }}
+
+                            if (!updatedAbility) {
+                            setSaveStatus('error')
+                            return
+                            }
+
+                            setFerretAbilities(
+                            (current) =>
+                                current.map((item) =>
+                                item.id === updatedAbility.id
+                                    ? updatedAbility
+                                    : item
+                                )
+                            )
+
+                            setSaveStatus('saved')
+                        } catch (error) {
+                            console.error(
+                            'Could not save companion ability description.',
+                            error
+                            )
+                            setSaveStatus('error')
+                        }
+                        }}
                     />
                 </div>
               )
@@ -4508,6 +4820,9 @@ import type {
   Character,
   EquipmentItem,
 } from '../data/database'
+
+import { SaveStatus } from '../components/SaveStatus'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 type AttributeKey =
   | 'strength'
@@ -5117,13 +5432,14 @@ export default function CharacterPage({
             <span className="character-name-label">
               <span>Character Name</span>
 
-              <span className="character-save-status">
-                {saveStatus === 'saving'
-                  ? 'Saving…'
-                  : saveStatus === 'error'
-                    ? 'Save error'
-                    : 'Saved'}
-              </span>
+              <div className="page-heading-actions">
+                <SaveStatus
+                  status={saveStatus}
+                  className="character-save-status"
+                />
+
+                <GuideHelpButton topicId="character" />
+              </div>
             </span>
 
             <input
@@ -5965,10 +6281,21 @@ import type {
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
 
+import {
+  SaveStatus,
+  type SaveStatusState,
+} from '../components/SaveStatus'
+
+import GuideHelpButton from '../components/GuideHelpButton'
+
 export default function DiscoveriesPage({
   campaign,
+  onOpenSession,
 }: {
   campaign: Campaign
+  onOpenSession: (
+    sessionId: string
+  ) => void
 }) {
   const [
     discoveries,
@@ -6087,6 +6414,9 @@ export default function DiscoveriesPage({
     isLoading,
     setIsLoading,
   ] = useState(true)
+
+  const [saveStatus, setSaveStatus] =
+  useState<SaveStatusState>('saved')
 
   useEffect(() => {
     async function loadDiscoveries() {
@@ -6287,31 +6617,43 @@ export default function DiscoveriesPage({
     }
 
     const timeout =
-      window.setTimeout(() => {
-        void updateDiscoveryTitle(
-          selectedDiscoveryId,
-          trimmedTitle
-        )
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
 
-        setDiscoveries(
-          (current) =>
-            current
-              .map((discovery) =>
-                discovery.id ===
-                selectedDiscoveryId
-                  ? {
-                      ...discovery,
-                      title:
-                        trimmedTitle,
-                    }
-                  : discovery
-              )
-              .sort((a, b) =>
-                a.title.localeCompare(
-                  b.title
+          await updateDiscoveryTitle(
+            selectedDiscoveryId,
+            trimmedTitle
+          )
+
+          setDiscoveries(
+            (current) =>
+              current
+                .map((discovery) =>
+                  discovery.id ===
+                  selectedDiscoveryId
+                    ? {
+                        ...discovery,
+                        title:
+                          trimmedTitle,
+                      }
+                    : discovery
                 )
-              )
-        )
+                .sort((a, b) =>
+                  a.title.localeCompare(
+                    b.title
+                  )
+                )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Discovery title.',
+            error
+          )
+          setSaveStatus('error')
+        }
       }, 400)
 
     return () => {
@@ -6328,26 +6670,38 @@ export default function DiscoveriesPage({
     }
 
     const timeout =
-      window.setTimeout(() => {
-        void updateDiscoveryNotes(
-          selectedDiscoveryId,
-          notesDraft
-        )
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
 
-        setDiscoveries(
-          (current) =>
-            current.map(
-              (discovery) =>
-                discovery.id ===
-                selectedDiscoveryId
-                  ? {
-                      ...discovery,
-                      notes:
-                        notesDraft,
-                    }
-                  : discovery
-            )
-        )
+          await updateDiscoveryNotes(
+            selectedDiscoveryId,
+            notesDraft
+          )
+
+          setDiscoveries(
+            (current) =>
+              current.map(
+                (discovery) =>
+                  discovery.id ===
+                  selectedDiscoveryId
+                    ? {
+                        ...discovery,
+                        notes:
+                          notesDraft,
+                      }
+                    : discovery
+              )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Discovery notes.',
+            error
+          )
+          setSaveStatus('error')
+        }
       }, 400)
 
     return () => {
@@ -6519,12 +6873,26 @@ const groupedDiscoveries =
   return (
     <>
       <section className="page left-page distress-e discoveries-page">
-        <h1 className="page-title">Discoveries</h1>
+        <div className="page-heading-with-status">
+          <div>
+            <h1 className="page-title">
+              Discoveries
+            </h1>
 
-        <p className="subtitle">
-          Discoveries from{' '}
-          {campaign.name}
-        </p>
+            <p className="subtitle">
+              Discoveries from{' '}
+              {campaign.name}
+            </p>
+          </div>
+
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+            />
+
+            <GuideHelpButton topicId="discoveries" />
+          </div>
+        </div>
 
         <input
           className="discoveries-search"
@@ -7267,13 +7635,27 @@ const groupedDiscoveries =
               <h2 className="section-title">First Discovered</h2>
 
               {firstDiscoveredSession ? (
-                <p>
+                <button
+                  type="button"
+                  className="text-button entry-session-link"
+                  onClick={() =>
+                    onOpenSession(
+                      firstDiscoveredSession.id
+                    )
+                  }
+                >
                   Session{' '}
                   {
                     firstDiscoveredSession
                       .sessionNumber
                   }
-                </p>
+                  {firstDiscoveredSession.title && (
+                    <>
+                      {' — '}
+                      {firstDiscoveredSession.title}
+                    </>
+                  )}
+                </button>
               ) : (
                 <p className="empty-message">
                   No Session source
@@ -7291,15 +7673,23 @@ const groupedDiscoveries =
                   <div className="entry-session-list">
                     {visibleSessions.map(
                       (session) => (
-                        <div
+                        <button
                           key={session.id}
-                          className="entry-session-item"
+                          type="button"
+                          className="text-button entry-session-link"
+                          onClick={() =>
+                            onOpenSession(session.id)
+                          }
                         >
                           Session{' '}
-                          {
-                            session.sessionNumber
-                          }
-                        </div>
+                          {session.sessionNumber}
+                          {session.title && (
+                            <>
+                              {' — '}
+                              {session.title}
+                            </>
+                          )}
+                        </button>
                       )
                     )}
                   </div>
@@ -7363,6 +7753,8 @@ import type {
 } from '../data/database'
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
+import { SaveStatus } from '../components/SaveStatus'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 const goalSections: {
   term: GoalTerm
@@ -7730,7 +8122,7 @@ export default function GoalsPage({
   return (
     <>
       <section className="page left-page goals-page distress-c">
-        <div className="goals-heading">
+        <div className="page-heading-with-status">
           <div>
             <h1 className="page-title">Goals</h1>
 
@@ -7739,15 +8131,14 @@ export default function GoalsPage({
             </p>
           </div>
 
-          <span className="goal-save-status">
-            {saveStatus ===
-            'saving'
-              ? 'Saving…'
-              : saveStatus ===
-                  'error'
-                ? 'Save error'
-                : 'Saved'}
-          </span>
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+              className="goal-save-status"
+            />
+
+            <GuideHelpButton topicId="goals" />
+          </div>
         </div>
 
         {goalSections.map(
@@ -8014,6 +8405,96 @@ export default function GoalsPage({
   )
 }
 
+===== C:\Users\mayit\OneDrive\Skrivebord\Campaign Guide\src\pages\GuidePage.tsx =====
+import {
+  guideTopics,
+  type GuideTopicId,
+} from '../data/guideTopics'
+
+import { useState } from 'react'
+
+export default function GuidePage() {
+  const [
+    selectedTopicId,
+    setSelectedTopicId,
+  ] = useState<GuideTopicId>(
+    'getting-started'
+  )
+
+  const selectedTopic =
+    guideTopics.find(
+      (topic) =>
+        topic.id === selectedTopicId
+    ) ?? guideTopics[0]
+
+  return (
+    <>
+      <section className="page left-page distress-c guide-page">
+        <h1 className="page-title">
+          Guide
+        </h1>
+
+        <p className="subtitle">
+          How to use your Campaign Guide
+        </p>
+
+        <div className="guide-topic-list">
+          {guideTopics.map((topic) => (
+            <button
+              key={topic.id}
+              type="button"
+              className={
+                topic.id === selectedTopicId
+                    ? 'selection-list-item active'
+                    : 'selection-list-item'
+                }
+              onClick={() =>
+                setSelectedTopicId(
+                  topic.id
+                )
+              }
+            >
+              {topic.title}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="page right-page distress-b guide-detail-page">
+        <h2 className="detail-title">
+            {selectedTopic.title}
+        </h2>
+
+        <div className="page-section">
+            <h3 className="section-title">
+            Purpose
+            </h3>
+
+            <p>
+            {selectedTopic.purpose}
+            </p>
+        </div>
+
+        <div className="page-section">
+            <h3 className="section-title">
+            How it works
+            </h3>
+
+            <ul>
+            {selectedTopic.howItWorks.map(
+                (item) => (
+                <li key={item}>
+                    {item}
+                </li>
+                )
+            )}
+            </ul>
+        </div>
+        </section>
+    </>
+  )
+}
+
 ===== C:\Users\mayit\OneDrive\Skrivebord\Campaign Guide\src\pages\JournalPage.tsx =====
 import {
   useEffect,
@@ -8032,10 +8513,19 @@ import {
   updateSessionTitle,
 } from '../data/repository'
 
+import {
+  SaveStatus,
+  type SaveStatusState,
+} from '../components/SaveStatus'
+
+import GuideHelpButton from '../components/GuideHelpButton'
+
 export default function JournalPage({
   campaign,
+  initialSessionId,
 }: {
   campaign: Campaign
+  initialSessionId?: string
 }) {
   const [
     sessions,
@@ -8072,6 +8562,9 @@ export default function JournalPage({
       null
     )
 
+  const [saveStatus, setSaveStatus] =
+    useState<SaveStatusState>('saved')
+
   useEffect(() => {
     async function loadJournal() {
       const result =
@@ -8082,8 +8575,18 @@ export default function JournalPage({
       setSessions(result)
 
       if (result.length > 0) {
+        const requestedSession =
+          initialSessionId
+            ? result.find(
+                (session) =>
+                  session.id ===
+                  initialSessionId
+              )
+            : undefined
+
         setSelectedSessionId(
-          result[0].id
+          requestedSession?.id ??
+            result[0].id
         )
       }
 
@@ -8091,7 +8594,10 @@ export default function JournalPage({
     }
 
     void loadJournal()
-  }, [campaign.id])
+  }, [
+    campaign.id,
+    initialSessionId,
+  ])
 
   const selectedSession =
     sessions.find(
@@ -8124,37 +8630,48 @@ export default function JournalPage({
   }, [journalDraft])
 
   useEffect(() => {
-  if (!selectedSessionId) {
-    return
-  }
+    if (!selectedSessionId) {
+      return
+    }
 
-  const timeout = window.setTimeout(
-    () => {
-      void updateSessionJournalText(
-        selectedSessionId,
-        journalDraft
-      )
+    const timeout = window.setTimeout(
+      async () => {
+        try {
+          setSaveStatus('saving')
 
-      setSessions((current) =>
-        current.map((session) =>
-          session.id ===
-          selectedSessionId
-            ? {
-                ...session,
-                journalText:
-                  journalDraft,
-              }
-            : session
-        )
-      )
-    },
-    400
-  )
+          await updateSessionJournalText(
+            selectedSessionId,
+            journalDraft
+          )
 
-  return () => {
-    window.clearTimeout(timeout)
-  }
-}, [journalDraft, selectedSessionId])
+          setSessions((current) =>
+            current.map((session) =>
+              session.id === selectedSessionId
+                ? {
+                    ...session,
+                    journalText:
+                      journalDraft,
+                  }
+                : session
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Journal text.',
+            error
+          )
+          setSaveStatus('error')
+        }
+      },
+      400
+    )
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [journalDraft, selectedSessionId])
 
   useEffect(() => {
     if (!selectedSessionId) {
@@ -8162,23 +8679,34 @@ export default function JournalPage({
     }
 
     const timeout = window.setTimeout(
-      () => {
-        void updateSessionTitle(
-          selectedSessionId,
-          titleDraft
-        )
+      async () => {
+        try {
+          setSaveStatus('saving')
 
-        setSessions((current) =>
-          current.map((session) =>
-            session.id ===
-            selectedSessionId
-              ? {
-                  ...session,
-                  title: titleDraft,
-                }
-              : session
+          await updateSessionTitle(
+            selectedSessionId,
+            titleDraft
           )
-        )
+
+          setSessions((current) =>
+            current.map((session) =>
+              session.id === selectedSessionId
+                ? {
+                    ...session,
+                    title: titleDraft,
+                  }
+                : session
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Journal title.',
+            error
+          )
+          setSaveStatus('error')
+        }
       },
       400
     )
@@ -8230,12 +8758,26 @@ const filteredSessions =
   return (
     <>
       <section className="page left-page distress-f journal-page">
-        <h1 className="page-title">Journal</h1>
+        <div className="page-heading-with-status">
+          <div>
+            <h1 className="page-title">
+              Journal
+            </h1>
 
-        <p className="subtitle">
-          Completed Sessions from{' '}
-          {campaign.name}
-        </p>
+            <p className="subtitle">
+              Completed Sessions from{' '}
+              {campaign.name}
+            </p>
+          </div>
+
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+            />
+
+            <GuideHelpButton topicId="journal" />
+          </div>
+        </div>
 
         <input
           type="search"
@@ -8364,11 +8906,21 @@ import type {
 } from '../data/database'
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
+import GuideHelpButton from '../components/GuideHelpButton'
+
+import {
+  SaveStatus,
+  type SaveStatusState,
+} from '../components/SaveStatus'
 
 export default function PeoplePage({
   campaign,
+  onOpenSession,
 }: {
   campaign: Campaign
+  onOpenSession: (
+    sessionId: string
+  ) => void
 }) {
   const [people, setPeople] =
     useState<Person[]>([])
@@ -8536,29 +9088,43 @@ export default function PeoplePage({
     selectedPersonId,
   ])
 
+  const [saveStatus, setSaveStatus] =
+  useState<SaveStatusState>('saved')
+
   useEffect(() => {
     if (!selectedPersonId) {
       return
     }
 
     const timeout =
-      window.setTimeout(() => {
-        void updatePersonNotes(
-          selectedPersonId,
-          notesDraft
-        )
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
 
-        setPeople((current) =>
-          current.map((person) =>
-            person.id ===
-            selectedPersonId
-              ? {
-                  ...person,
-                  notes: notesDraft,
-                }
-              : person
+          await updatePersonNotes(
+            selectedPersonId,
+            notesDraft
           )
-        )
+
+          setPeople((current) =>
+            current.map((person) =>
+              person.id === selectedPersonId
+                ? {
+                    ...person,
+                    notes: notesDraft,
+                  }
+                : person
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Person notes.',
+            error
+          )
+          setSaveStatus('error')
+        }
       }, 400)
 
     return () => {
@@ -8575,24 +9141,35 @@ export default function PeoplePage({
     }
 
     const timeout =
-      window.setTimeout(() => {
-        void updatePersonDescription(
-          selectedPersonId,
-          descriptionDraft
-        )
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
 
-        setPeople((current) =>
-          current.map((person) =>
-            person.id ===
-            selectedPersonId
-              ? {
-                  ...person,
-                  description:
-                    descriptionDraft,
-                }
-              : person
+          await updatePersonDescription(
+            selectedPersonId,
+            descriptionDraft
           )
-        )
+
+          setPeople((current) =>
+            current.map((person) =>
+              person.id === selectedPersonId
+                ? {
+                    ...person,
+                    description:
+                      descriptionDraft,
+                  }
+                : person
+            )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Person description.',
+            error
+          )
+          setSaveStatus('error')
+        }
       }, 400)
 
     return () => {
@@ -8616,30 +9193,41 @@ export default function PeoplePage({
     }
 
     const timeout =
-      window.setTimeout(() => {
-        void updatePersonName(
-          selectedPersonId,
-          trimmedName
-        )
+      window.setTimeout(async () => {
+        try {
+          setSaveStatus('saving')
 
-        setPeople((current) =>
-          current
-            .map((person) =>
-              person.id ===
-              selectedPersonId
-                ? {
-                    ...person,
-                    name:
-                      trimmedName,
-                  }
-                : person
-            )
-            .sort((a, b) =>
-              a.name.localeCompare(
-                b.name
+          await updatePersonName(
+            selectedPersonId,
+            trimmedName
+          )
+
+          setPeople((current) =>
+            current
+              .map((person) =>
+                person.id === selectedPersonId
+                  ? {
+                      ...person,
+                      name:
+                        trimmedName,
+                    }
+                  : person
               )
-            )
-        )
+              .sort((a, b) =>
+                a.name.localeCompare(
+                  b.name
+                )
+              )
+          )
+
+          setSaveStatus('saved')
+        } catch (error) {
+          console.error(
+            'Could not save Person name.',
+            error
+          )
+          setSaveStatus('error')
+        }
       }, 400)
 
     return () => {
@@ -8694,11 +9282,24 @@ export default function PeoplePage({
   return (
     <>
       <section className="page left-page distress-d people-page">
-        <h1 className="page-title">People</h1>
+        <div className="page-heading-with-status">
+          <div>
+            <h1 className="page-title">People</h1>
 
-        <p className="subtitle">
-          People known in {campaign.name}
-        </p>
+            <p className="subtitle">
+              People known in {campaign.name}
+            </p>
+          </div>
+
+          <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+              className="person-save-status"
+            />
+
+            <GuideHelpButton topicId="people" />
+          </div>
+        </div>
 
         <input
           className="people-search"
@@ -8754,7 +9355,6 @@ export default function PeoplePage({
                   )
                 }
               />
-
               <button
                 type="button"
                 className="destructive-button person-delete-button"
@@ -9006,15 +9606,23 @@ export default function PeoplePage({
                   <div className="entry-session-list">
                     {visibleSessions.map(
                       (session) => (
-                        <div
+                        <button
                           key={session.id}
-                          className="entry-session-item"
+                          type="button"
+                          className="text-button entry-session-link"
+                          onClick={() =>
+                            onOpenSession(session.id)
+                          }
                         >
                           Session{' '}
-                          {
-                            session.sessionNumber
-                          }
-                        </div>
+                          {session.sessionNumber}
+                          {session.title && (
+                            <>
+                              {' — '}
+                              {session.title}
+                            </>
+                          )}
+                        </button>
                       )
                     )}
                   </div>
@@ -9075,6 +9683,8 @@ import type {
 } from '../data/database'
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
+import { SaveStatus } from '../components/SaveStatus'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 export default function RemindersPage({
   campaign,
@@ -9314,7 +9924,7 @@ export default function RemindersPage({
   return (
     <>
       <section className="page left-page reminders-page distress-b">
-        <div className="reminders-heading">
+        <div className="page-heading-with-status">
           <div>
             <h1 className="page-title">Reminders</h1>
 
@@ -9323,15 +9933,14 @@ export default function RemindersPage({
             </p>
           </div>
 
-          <span className="reminder-save-status">
-            {saveStatus ===
-            'saving'
-              ? 'Saving…'
-              : saveStatus ===
-                  'error'
-                ? 'Save error'
-                : 'Saved'}
-          </span>
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+              className="reminder-save-status"
+            />
+
+            <GuideHelpButton topicId="reminders" />
+          </div>
         </div>
 
         <button

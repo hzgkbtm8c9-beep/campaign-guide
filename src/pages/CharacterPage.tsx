@@ -19,6 +19,7 @@ import type {
 } from '../data/database'
 
 import { SaveStatus } from '../components/SaveStatus'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 type AttributeKey =
   | 'strength'
@@ -628,10 +629,14 @@ export default function CharacterPage({
             <span className="character-name-label">
               <span>Character Name</span>
 
-              <SaveStatus
-                status={saveStatus}
-                className="character-save-status"
-              />
+              <div className="page-heading-actions">
+                <SaveStatus
+                  status={saveStatus}
+                  className="character-save-status"
+                />
+
+                <GuideHelpButton topicId="character" />
+              </div>
             </span>
 
             <input

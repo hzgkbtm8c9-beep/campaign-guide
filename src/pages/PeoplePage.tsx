@@ -11,17 +11,19 @@ import {
   getSessionsForEntry,
   mergePeople,
   updatePersonName,
-  updatePersonDescription,
+  updatePersonRelationship,
   updatePersonNotes,
 } from '../data/repository'
 
 import type {
   Campaign,
   Person,
+  PersonRelationship,
   Session,
 } from '../data/database'
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 import {
   SaveStatus,
@@ -30,8 +32,12 @@ import {
 
 export default function PeoplePage({
   campaign,
+  onOpenSession,
 }: {
   campaign: Campaign
+  onOpenSession: (
+    sessionId: string
+  ) => void
 }) {
   const [people, setPeople] =
     useState<Person[]>([])
@@ -61,19 +67,12 @@ export default function PeoplePage({
   )
 
   const [
-    descriptionDraft,
-    setDescriptionDraft,
-  ] = useState('')
-
-  const descriptionEditorRef =
-    useRef<HTMLTextAreaElement | null>(
-      null
+    relationshipDraft,
+    setRelationshipDraft,
+  ] =
+    useState<PersonRelationship>(
+      'unknown'
     )
-
-  useAutoGrowTextarea(
-    descriptionEditorRef,
-    descriptionDraft
-  )
 
   const [
     nameDraft,
@@ -144,7 +143,7 @@ export default function PeoplePage({
       if (!selectedPerson) {
         setRelatedSessions([])
         setNotesDraft('')
-        setDescriptionDraft('')
+        setRelationshipDraft('unknown')
         setNameDraft('')
         setMergeTargetId('')
         return
@@ -182,8 +181,8 @@ export default function PeoplePage({
           contributionText
       )
 
-      setDescriptionDraft(
-        selectedPerson.description ?? ''
+      setRelationshipDraft(
+        selectedPerson.relationship
       )
 
       setNameDraft(
@@ -256,9 +255,9 @@ export default function PeoplePage({
         try {
           setSaveStatus('saving')
 
-          await updatePersonDescription(
+          await updatePersonRelationship(
             selectedPersonId,
-            descriptionDraft
+            relationshipDraft
           )
 
           setPeople((current) =>
@@ -266,8 +265,8 @@ export default function PeoplePage({
               person.id === selectedPersonId
                 ? {
                     ...person,
-                    description:
-                      descriptionDraft,
+                    relationship:
+                      relationshipDraft,
                   }
                 : person
             )
@@ -276,7 +275,7 @@ export default function PeoplePage({
           setSaveStatus('saved')
         } catch (error) {
           console.error(
-            'Could not save Person description.',
+            'Could not save Person relationship.',
             error
           )
           setSaveStatus('error')
@@ -287,7 +286,7 @@ export default function PeoplePage({
       window.clearTimeout(timeout)
     }
   }, [
-    descriptionDraft,
+    relationshipDraft,
     selectedPersonId,
   ])
 
@@ -357,7 +356,7 @@ export default function PeoplePage({
       ? people.filter((person) => {
           const searchableText = [
             person.name,
-            person.description ?? '',
+            person.relationship ?? '',
             person.notes ?? '',
           ]
             .join(' ')
@@ -394,18 +393,25 @@ export default function PeoplePage({
     <>
       <section className="page left-page distress-d people-page">
         <div className="page-heading-with-status">
-          <div>
-            <h1 className="page-title">People</h1>
+          <div className="page-heading-copy">
+            <h1 className="page-title">
+              People
+            </h1>
 
-            <p className="subtitle">
-              People known in {campaign.name}
+            <p className="page-intro">
+              Friends, foes, and those
+              yet to reveal which.
             </p>
           </div>
 
-          <SaveStatus
-            status={saveStatus}
-            className="person-save-status"
-          />
+          <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+              className="person-save-status"
+            />
+
+            <GuideHelpButton topicId="people" />
+          </div>
         </div>
 
         <input
@@ -495,94 +501,141 @@ export default function PeoplePage({
               Delete Person
             </button>
             </div>
-            {people.length > 1 && (
-              <div className="person-merge-controls">
+            <div className="discovery-top-meta-row">
+              <label className="discovery-category-field">
+                <span className="section-title discovery-category-field-heading">
+                  Relationship
+                </span>
+
                 <select
-                  value={mergeTargetId}
+                  value={relationshipDraft}
                   onChange={(event) =>
-                    setMergeTargetId(
-                      event.target.value
+                    setRelationshipDraft(
+                      event.target
+                        .value as PersonRelationship
                     )
                   }
                 >
-                  <option value="">
-                    Merge with…
+                  <option value="unknown">
+                    Unknown
                   </option>
-
-                  {people
-                    .filter(
-                      (person) =>
-                        person.id !==
-                        selectedPerson.id
-                    )
-                    .map((person) => (
-                      <option
-                        key={person.id}
-                        value={person.id}
-                      >
-                        {person.name}
-                      </option>
-                    ))}
+                  <option value="stranger">
+                    Stranger
+                  </option>
+                  <option value="ally">
+                    Ally
+                  </option>
+                  <option value="neutral">
+                    Neutral
+                  </option>
+                  <option value="rival">
+                    Rival
+                  </option>
+                  <option value="foe">
+                    Foe
+                  </option>
                 </select>
+              </label>
 
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={!mergeTargetId}
-                  onClick={() => {
-                    if (!mergeTarget) {
-                      return
-                    }
+              {people.length > 1 && (
+                <div className="discovery-merge-area">
+                  <span className="discovery-category-field-heading">
+                    Merge with...
+                  </span>
 
-                    void Promise.all([
-                      getNoteContributions(
-                        'person',
-                        selectedPerson.id
-                      ),
-                      getNoteContributions(
-                        'person',
-                        mergeTarget.id
-                      ),
-                    ]).then(
-                      ([
-                        survivorContributions,
-                        targetContributions,
-                      ]) => {
-                        const contributions = [
-                          ...survivorContributions,
-                          ...targetContributions,
-                        ].sort((a, b) => {
-                          const timeComparison =
-                            a.createdAt.localeCompare(
-                              b.createdAt
-                            )
-
-                          if (timeComparison !== 0) {
-                            return timeComparison
-                          }
-
-                          return a.id.localeCompare(b.id)
-                        })
-
-                        setMergePreviewNotes(
-                          contributions
-                            .map(
-                              (contribution) =>
-                                contribution.text
-                            )
-                            .filter(Boolean)
-                            .join('\n')
+                  <div className="discovery-merge-controls">
+                    <select
+                      value={mergeTargetId}
+                      onChange={(event) =>
+                        setMergeTargetId(
+                          event.target.value
                         )
-
-                        setShowMergePreview(true)
                       }
-                    )
-                  }}
-                >
-                  Merge
-                </button>
-              </div>
-            )}
+                    >
+                      <option value="">
+                        Select Person...
+                      </option>
+
+                      {people
+                        .filter(
+                          (person) =>
+                            person.id !==
+                            selectedPerson.id
+                        )
+                        .map((person) => (
+                          <option
+                            key={person.id}
+                            value={person.id}
+                          >
+                            {person.name}
+                          </option>
+                        ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={!mergeTargetId}
+                      onClick={() => {
+                        if (!mergeTarget) {
+                          return
+                        }
+
+                        void Promise.all([
+                          getNoteContributions(
+                            'person',
+                            selectedPerson.id
+                          ),
+                          getNoteContributions(
+                            'person',
+                            mergeTarget.id
+                          ),
+                        ]).then(
+                          ([
+                            survivorContributions,
+                            targetContributions,
+                          ]) => {
+                            const contributions = [
+                              ...survivorContributions,
+                              ...targetContributions,
+                            ].sort((a, b) => {
+                              const timeComparison =
+                                a.createdAt.localeCompare(
+                                  b.createdAt
+                                )
+
+                              if (
+                                timeComparison !== 0
+                              ) {
+                                return timeComparison
+                              }
+
+                              return a.id.localeCompare(
+                                b.id
+                              )
+                            })
+
+                            setMergePreviewNotes(
+                              contributions
+                                .map(
+                                  (contribution) =>
+                                    contribution.text
+                                )
+                                .filter(Boolean)
+                                .join('\n')
+                            )
+
+                            setShowMergePreview(true)
+                          }
+                        )
+                      }}
+                    >
+                      Merge
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             {showMergePreview &&
               mergeTarget && (
                 <div
@@ -673,21 +726,6 @@ export default function PeoplePage({
                   </div>
                 </div>
               )}
-            <div className="page-section">
-              <h2 className="section-title">Description</h2>
-
-              <textarea
-                ref={descriptionEditorRef}
-                className="writing-textarea person-description-editor"
-                value={descriptionDraft}
-                onChange={(event) =>
-                  setDescriptionDraft(
-                    event.target.value
-                  )
-                }
-                placeholder="No description yet."
-              />
-            </div>
 
             <div className="page-section">
               <h2 className="section-title">Notes</h2>
@@ -713,15 +751,23 @@ export default function PeoplePage({
                   <div className="entry-session-list">
                     {visibleSessions.map(
                       (session) => (
-                        <div
+                        <button
                           key={session.id}
-                          className="entry-session-item"
+                          type="button"
+                          className="text-button entry-session-link"
+                          onClick={() =>
+                            onOpenSession(session.id)
+                          }
                         >
                           Session{' '}
-                          {
-                            session.sessionNumber
-                          }
-                        </div>
+                          {session.sessionNumber}
+                          {session.title && (
+                            <>
+                              {' — '}
+                              {session.title}
+                            </>
+                          )}
+                        </button>
                       )
                     )}
                   </div>

@@ -20,10 +20,14 @@ import {
   type SaveStatusState,
 } from '../components/SaveStatus'
 
+import GuideHelpButton from '../components/GuideHelpButton'
+
 export default function JournalPage({
   campaign,
+  initialSessionId,
 }: {
   campaign: Campaign
+  initialSessionId?: string
 }) {
   const [
     sessions,
@@ -73,8 +77,18 @@ export default function JournalPage({
       setSessions(result)
 
       if (result.length > 0) {
+        const requestedSession =
+          initialSessionId
+            ? result.find(
+                (session) =>
+                  session.id ===
+                  initialSessionId
+              )
+            : undefined
+
         setSelectedSessionId(
-          result[0].id
+          requestedSession?.id ??
+            result[0].id
         )
       }
 
@@ -82,7 +96,10 @@ export default function JournalPage({
     }
 
     void loadJournal()
-  }, [campaign.id])
+  }, [
+    campaign.id,
+    initialSessionId,
+  ])
 
   const selectedSession =
     sessions.find(
@@ -244,20 +261,24 @@ const filteredSessions =
     <>
       <section className="page left-page distress-f journal-page">
         <div className="page-heading-with-status">
-          <div>
+          <div className="page-heading-copy">
             <h1 className="page-title">
               Journal
             </h1>
 
-            <p className="subtitle">
-              Completed Sessions from{' '}
-              {campaign.name}
+            <p className="page-intro">
+              The tale of your adventures,
+              as best anyone remembers them.
             </p>
           </div>
 
-          <SaveStatus
-            status={saveStatus}
-          />
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+            />
+
+            <GuideHelpButton topicId="journal" />
+          </div>
         </div>
 
         <input

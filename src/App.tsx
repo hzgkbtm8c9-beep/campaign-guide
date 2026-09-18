@@ -7,6 +7,7 @@ import CharacterPage from './pages/CharacterPage'
 import CharacterModulePage from './pages/CharacterModulePage'
 import GoalsPage from './pages/GoalsPage'
 import RemindersPage from './pages/RemindersPage'
+import GuidePage from './pages/GuidePage'
 import todayIllustration from './assets/today/Campaign guide image2.png'
 import leatherTexture from './assets/textures/leather-texture.png'
 import paperTexture from './assets/textures/paper-texture.png'
@@ -82,6 +83,8 @@ import {
   Bookmark,
   BookOpen,
 } from 'lucide-react'
+
+import GuideHelpButton from './components/GuideHelpButton'
 
 type Section =
   | 'today'
@@ -1731,17 +1734,21 @@ function ReviewScreen({
             Session Review
           </h1>
 
-          <span
-            className={
-              currentItemResolved
-                ? 'resolution-badge resolved'
-                : 'resolution-badge unresolved'
-            }
-          >
-            {currentItemResolved
-              ? 'Resolved'
-              : 'Unresolved'}
-          </span>
+          <div className="page-heading-actions">
+            <span
+              className={
+                currentItemResolved
+                  ? 'resolution-badge resolved'
+                  : 'resolution-badge unresolved'
+              }
+            >
+              {currentItemResolved
+                ? 'Resolved'
+                : 'Unresolved'}
+            </span>
+
+            <GuideHelpButton topicId="review" />
+          </div>
         </div>
 
         <div className="review-block">
@@ -2410,6 +2417,8 @@ function ReviewScreen({
           </button>
         </div>
       </div>
+
+      <div id="modal-host" />
     </main>
   )
 }
@@ -2579,13 +2588,21 @@ function TodayPage({
   return (
     <>
       <section className="page left-page today-session-page distress-a">
-        <h1 className="page-title">
-          Today's Adventure
-        </h1>
+                <div className="page-heading-with-status">
+          <div>
+            <h1 className="page-title">
+              Today's Adventure
+            </h1>
 
-        <p className="subtitle today-campaign-name">
-          {campaign.name}
-        </p>
+            <p className="section-title today-campaign-name">
+              {campaign.name}
+            </p>
+          </div>
+
+          <div className="page-heading-actions">
+            <GuideHelpButton topicId="today" />
+          </div>
+        </div>
 
         <div className="page-section today-session-section">
           <h2 className="section-title">Session</h2>
@@ -2836,14 +2853,14 @@ function TodayPage({
 
         <div className="today-switch-campaign">
           <button
-            className="secondary-button compact-button switch-campaign-button"
+            className="text-button switch-campaign-button"
             onClick={onSwitchCampaign}
           >
             Switch Campaign
           </button>
 
           <button
-            className="secondary-button compact-button switch-campaign-button"
+            className="text-button switch-campaign-button"
             onClick={() =>
               void onExportCampaign()
             }
@@ -2851,7 +2868,7 @@ function TodayPage({
             Export Campaign
           </button>
 
-          <label className="secondary-button compact-button switch-campaign-button">
+          <label className="text-button switch-campaign-button">
             Import Campaign
 
             <input
@@ -2913,7 +2930,7 @@ function PlaceholderPage({
       <section className="page left-page">
         <h1>{title}</h1>
 
-        <p className="subtitle">
+        <p className="empty-message">
           This section will be
           built in a later stage.
         </p>
@@ -3226,6 +3243,22 @@ function CampaignApp({
     useState<Section>(
       'today'
     )
+
+  const [
+    journalSessionId,
+    setJournalSessionId,
+  ] = useState<string | undefined>()
+
+  function openJournalSession(
+    sessionId: string
+  ) {
+    setJournalSessionId(undefined)
+
+    window.setTimeout(() => {
+      setJournalSessionId(sessionId)
+      setActiveSection('journal')
+    }, 0)
+  }
 
   const bookWrapperRef =
     useRef<HTMLDivElement>(null)
@@ -3762,19 +3795,24 @@ function CampaignApp({
         ) : activeSection === 'people' ? (
           <PeoplePage
             campaign={campaign}
+            onOpenSession={openJournalSession}
           />
         ) : activeSection === 'discoveries' ? (
           <DiscoveriesPage
             campaign={campaign}
+            onOpenSession={openJournalSession}
           />
         ) : activeSection === 'journal' ? (
           <JournalPage
             campaign={campaign}
+            initialSessionId={journalSessionId}
           />
         ) : activeSection === 'reminders' ? (
           <RemindersPage
             campaign={campaign}
           />
+        ) : activeSection === 'guide' ? (
+          <GuidePage />
         ) : (
           <PlaceholderPage
             title={activeLabel}
@@ -3782,6 +3820,7 @@ function CampaignApp({
         )}
       </div>
     </main>
+    <div id="modal-host" />
   </div>
 </div>
 </div>

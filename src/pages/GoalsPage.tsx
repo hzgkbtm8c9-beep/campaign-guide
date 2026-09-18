@@ -21,6 +21,7 @@ import type {
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
 import { SaveStatus } from '../components/SaveStatus'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 const goalSections: {
   term: GoalTerm
@@ -389,18 +390,22 @@ export default function GoalsPage({
     <>
       <section className="page left-page goals-page distress-c">
         <div className="page-heading-with-status">
-          <div>
+          <div className="page-heading-copy">
             <h1 className="page-title">Goals</h1>
 
-            <p className="subtitle">
-              What matters next
+            <p className="page-intro">
+              Ambitions worth chasing, before the dungeon changes its mind.
             </p>
           </div>
 
-          <SaveStatus
-            status={saveStatus}
-            className="goal-save-status"
-          />
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+              className="goal-save-status"
+            />
+
+            <GuideHelpButton topicId="goals" />
+          </div>
         </div>
 
         {goalSections.map(

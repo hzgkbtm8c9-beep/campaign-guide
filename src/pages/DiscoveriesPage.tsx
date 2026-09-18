@@ -35,10 +35,16 @@ import {
   type SaveStatusState,
 } from '../components/SaveStatus'
 
+import GuideHelpButton from '../components/GuideHelpButton'
+
 export default function DiscoveriesPage({
   campaign,
+  onOpenSession,
 }: {
   campaign: Campaign
+  onOpenSession: (
+    sessionId: string
+  ) => void
 }) {
   const [
     discoveries,
@@ -617,20 +623,24 @@ const groupedDiscoveries =
     <>
       <section className="page left-page distress-e discoveries-page">
         <div className="page-heading-with-status">
-          <div>
+          <div className="page-heading-copy">
             <h1 className="page-title">
               Discoveries
             </h1>
 
-            <p className="subtitle">
-              Discoveries from{' '}
-              {campaign.name}
+            <p className="page-intro">
+              Places, secrets, and things
+              perhaps best left undisturbed.
             </p>
           </div>
 
-          <SaveStatus
-            status={saveStatus}
-          />
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+            />
+
+            <GuideHelpButton topicId="discoveries" />
+          </div>
         </div>
 
         <input
@@ -820,6 +830,7 @@ const groupedDiscoveries =
                 ) : (
                   <div className="discovery-category-add">
                     <input
+                      className="discovery-category-add-input"
                       value={newCategoryName}
                       onChange={(event) =>
                         setNewCategoryName(
@@ -846,6 +857,7 @@ const groupedDiscoveries =
 
                     <button
                       type="button"
+                      className="primary-button compact-button discovery-category-add-button"
                       onClick={() =>
                         void addCategory()
                       }
@@ -855,6 +867,7 @@ const groupedDiscoveries =
 
                     <button
                       type="button"
+                      className="secondary-button compact-button"
                       onClick={() => {
                         setIsAddingCategory(false)
                         setNewCategoryName('')
@@ -1374,13 +1387,27 @@ const groupedDiscoveries =
               <h2 className="section-title">First Discovered</h2>
 
               {firstDiscoveredSession ? (
-                <p>
+                <button
+                  type="button"
+                  className="text-button entry-session-link"
+                  onClick={() =>
+                    onOpenSession(
+                      firstDiscoveredSession.id
+                    )
+                  }
+                >
                   Session{' '}
                   {
                     firstDiscoveredSession
                       .sessionNumber
                   }
-                </p>
+                  {firstDiscoveredSession.title && (
+                    <>
+                      {' — '}
+                      {firstDiscoveredSession.title}
+                    </>
+                  )}
+                </button>
               ) : (
                 <p className="empty-message">
                   No Session source
@@ -1398,15 +1425,23 @@ const groupedDiscoveries =
                   <div className="entry-session-list">
                     {visibleSessions.map(
                       (session) => (
-                        <div
+                        <button
                           key={session.id}
-                          className="entry-session-item"
+                          type="button"
+                          className="text-button entry-session-link"
+                          onClick={() =>
+                            onOpenSession(session.id)
+                          }
                         >
                           Session{' '}
-                          {
-                            session.sessionNumber
-                          }
-                        </div>
+                          {session.sessionNumber}
+                          {session.title && (
+                            <>
+                              {' — '}
+                              {session.title}
+                            </>
+                          )}
+                        </button>
                       )
                     )}
                   </div>

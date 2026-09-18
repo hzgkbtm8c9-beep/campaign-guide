@@ -18,6 +18,7 @@ import type {
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
 import { SaveStatus } from '../components/SaveStatus'
+import GuideHelpButton from '../components/GuideHelpButton'
 
 export default function RemindersPage({
   campaign,
@@ -258,18 +259,25 @@ export default function RemindersPage({
     <>
       <section className="page left-page reminders-page distress-b">
         <div className="page-heading-with-status">
-          <div>
-            <h1 className="page-title">Reminders</h1>
+          <div className="page-heading-copy">
+            <h1 className="page-title">
+              Reminders
+            </h1>
 
-            <p className="subtitle">
-              Useful things to keep close
+            <p className="page-intro">
+              Loose ends worth remembering
+              before they come back to bite.
             </p>
           </div>
 
-          <SaveStatus
-            status={saveStatus}
-            className="reminder-save-status"
-          />
+                    <div className="page-heading-actions">
+            <SaveStatus
+              status={saveStatus}
+              className="reminder-save-status"
+            />
+
+            <GuideHelpButton topicId="reminders" />
+          </div>
         </div>
 
         <button
