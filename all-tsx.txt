@@ -9,6 +9,7 @@ import CharacterModulePage from './pages/CharacterModulePage'
 import GoalsPage from './pages/GoalsPage'
 import RemindersPage from './pages/RemindersPage'
 import GuidePage from './pages/GuidePage'
+import Modal from './components/Modal'
 import todayIllustration from './assets/today/Campaign guide image2.png'
 import leatherTexture from './assets/textures/leather-texture.png'
 import paperTexture from './assets/textures/paper-texture.png'
@@ -35,6 +36,8 @@ import {
   getOpenReviews,
   getPeople,
   getQuickNotesForSession,
+  getCampfireShareableSessions,
+  getUncommittedReviewItems,
   getReviewDestinations,
   getReviewDraftCategories,
   getReviewDraftDiscoveries,
@@ -54,6 +57,11 @@ import {
   exportCampaign,
   importCampaign,
   replaceCampaignFromBackup,
+  downloadCampfirePackage,
+  parseCampfireFile,
+  importCampfirePackage,
+  getOpenReviewCampfireSessionIds,
+  type CampfirePackage,
 } from './data/repository'
 
 import type {
@@ -1753,7 +1761,22 @@ function ReviewScreen({
         </div>
 
         <div className="review-block">
-          <h2 className="section-title">Original Quick Note</h2>
+          <div className="campfire-note-heading">
+            <h2 className="section-title">
+              Original Quick Note
+            </h2>
+
+            {sourceNote.receivedViaCampfire && (
+              <span
+                className="campfire-indicator"
+                role="img"
+                aria-label="Received through Campfire"
+                title="Received through Campfire"
+              >
+                🔥
+              </span>
+            )}
+          </div>
 
           <p className="original-note">
             {sourceNote.text}
@@ -2429,6 +2452,7 @@ function TodayPage({
   activeSession,
   quickNotes,
   openReviews,
+  campfireReviewSessionIds,
   onStartSession,
   onEndSession,
   onSessionTitleChange,
@@ -2439,6 +2463,8 @@ function TodayPage({
   onOpenReminders,
   onExportCampaign,
   onImportCampaign,
+  onExportCampfire,
+  onCampfireReceived,
 }: {
   campaign: Campaign
   activeSession:
@@ -2446,6 +2472,7 @@ function TodayPage({
     | undefined
   quickNotes: QuickNote[]
   openReviews: Session[]
+  campfireReviewSessionIds: string[]
   onStartSession:
     () => Promise<void>
   onSessionTitleChange:
@@ -2460,6 +2487,10 @@ function TodayPage({
   onExportCampaign: () => Promise<void>
   onImportCampaign:
     (file: File) => Promise<void>
+  onExportCampfire:
+    (sessionIds: string[]) => Promise<void>
+  onCampfireReceived:
+    () => Promise<void>
   onOpenGoals: () => void
   onOpenReminders: () => void
 }) {
@@ -2515,6 +2546,103 @@ function TodayPage({
 
     void loadTodayReferenceData()
   }, [campaign.id])
+
+  const [
+    showShareNotes,
+    setShowShareNotes,
+  ] = useState(false)
+
+  const [
+    campfireSessions,
+    setCampfireSessions,
+  ] = useState<Session[]>([])
+
+  const [
+    selectedCampfireSessionIds,
+    setSelectedCampfireSessionIds,
+  ] = useState<string[]>([])
+
+  const [
+    receivedCampfirePackage,
+    setReceivedCampfirePackage,
+  ] = useState<CampfirePackage | null>(
+    null
+  )
+
+  const campfireFileInputRef =
+    useRef<HTMLInputElement | null>(null)
+
+  const [
+    campfireReceiveSessions,
+    setCampfireReceiveSessions,
+  ] = useState<Session[]>([])
+
+  const [
+    campfireSessionMappings,
+    setCampfireSessionMappings,
+  ] = useState<Record<number, string>>({})
+
+  async function handleOpenShareNotes() {
+    try {
+      setError('')
+
+      const sessions =
+        await getCampfireShareableSessions(
+          campaign.id
+        )
+
+      setCampfireSessions(sessions)
+      setSelectedCampfireSessionIds([])
+      setShowShareNotes(true)
+    } catch (error) {
+      console.error(
+        'Could not load Campfire Sessions.',
+        error
+      )
+
+      setError(
+        'Could not load Sessions for sharing.'
+      )
+    }
+  }
+
+  async function handleReceiveCampfire() {
+    if (!receivedCampfirePackage) {
+      return
+    }
+
+    try {
+      setError('')
+
+      await importCampfirePackage(
+        campaign.id,
+        receivedCampfirePackage,
+        receivedCampfirePackage.sessions.map(
+          (_, index) => ({
+            incomingSessionIndex: index,
+            localSessionId:
+              campfireSessionMappings[index] ||
+              undefined,
+          })
+        )
+      )
+
+      await onCampfireReceived()
+
+      setReceivedCampfirePackage(null)
+      setCampfireReceiveSessions([])
+      setCampfireSessionMappings({})
+    } catch (error) {
+      console.error(
+        'Campfire import failed.',
+        error
+      )
+
+      setError(
+        'Campfire Notes could not be received.'
+      )
+    }
+  }
 
   async function handleStartSession() {
     try {
@@ -2606,26 +2734,58 @@ function TodayPage({
         </div>
 
         <div className="page-section today-session-section">
-          <h2 className="section-title">Session</h2>
+          <div className="today-session-heading">
+            <h2 className="section-title">
+              Session
+            </h2>
 
-        <div className="today-illustration">
-          <img
-            src={todayIllustration}
-            alt=""
-          />
-        </div>
+            {!activeSession && (
+              <button
+                className="primary-button compact-button"
+                onClick={
+                  handleStartSession
+                }
+                disabled={isStarting}
+              >
+                {isStarting
+                  ? 'Starting…'
+                  : 'Start New Session'}
+              </button>
+            )}
+          </div>
+
+          <div className="today-illustration">
+            <img
+              src={todayIllustration}
+              alt=""
+            />
+          </div>
 
           {activeSession ? (
             <>
               <div className="today-session-status">
-                <strong>
-                  Session{' '}
-                  {activeSession.sessionNumber}
-                </strong>
+                <div className="today-session-identity">
+                  <h3 className="subsection-title">
+                    Session{' '}
+                    {activeSession.sessionNumber}
+                  </h3>
 
-                <span>
-                  Active
-                </span>
+                  <span>
+                    Active
+                  </span>
+                </div>
+
+                <button
+                  className="secondary-button compact-button today-end-session-button"
+                  onClick={
+                    handleEndSession
+                  }
+                  disabled={isEnding}
+                >
+                  {isEnding
+                    ? 'Ending…'
+                    : 'End Session'}
+                </button>
               </div>
 
               <input
@@ -2655,20 +2815,6 @@ function TodayPage({
               >
                 Quick Note
               </button>
-
-              <div className="today-end-session-area">
-                <button
-                  className="secondary-button today-end-session-button"
-                  onClick={
-                    handleEndSession
-                  }
-                  disabled={isEnding}
-                >
-                  {isEnding
-                    ? 'Ending…'
-                    : 'End Session'}
-                </button>
-              </div>
             </>
           ) : openReviews.length >
             0 ? (
@@ -2676,84 +2822,143 @@ function TodayPage({
               <div className="open-reviews">
                 <h3 className="subsection-title">Open Reviews</h3>
 
-                {openReviews.map(
-                  (session) => (
-                    <div
-                      className="review-card"
-                      key={
-                        session.id
-                      }
-                    >
-                      <strong>
-                        Session{' '}
-                        {
-                          session.sessionNumber
-                        }
-                      </strong>
-
-                      <span>
-                        {session.status ===
-                        'reviewing'
-                          ? 'In progress'
-                          : 'Ready for review'}
-                      </span>
-
-                      <button
-                        className="secondary-button compact-button review-button"
-                        onClick={() =>
-                          onOpenReview(
-                            session
-                          )
+                <div className="open-review-grid">
+                  {openReviews.map(
+                    (session) => (
+                      <div
+                        className="review-card"
+                        key={
+                          session.id
                         }
                       >
-                        {session.status ===
-                        'reviewing'
-                          ? 'Resume Review'
-                          : 'Start Review'}
-                      </button>
-                    </div>
-                  )
-                )}
-              </div>
+                        <strong>
+                          Session{' '}
+                          {
+                            session.sessionNumber
+                          }
 
-              <div className="today-new-session-area">
-                <button
-                  className="primary-button"
-                  onClick={
-                    handleStartSession
-                  }
-                  disabled={
-                    isStarting
-                  }
-                >
-                  {isStarting
-                    ? 'Starting…'
-                    : 'Start New Session'}
-                </button>
+                          {campfireReviewSessionIds.includes(
+                            session.id
+                          ) && (
+                            <>
+                              {' '}
+                              <span
+                                className="campfire-indicator open-review-campfire-indicator"
+                                role="img"
+                                aria-label="Contains notes received through Campfire"
+                                title="Contains notes received through Campfire"
+                              >
+                                🔥
+                              </span>
+                            </>
+                          )}
+                        </strong>
+
+                        <span>
+                          {session.status ===
+                          'reviewing'
+                            ? 'In progress'
+                            : 'Ready for review'}
+                        </span>
+
+                        <button
+                          className="secondary-button compact-button review-button"
+                          onClick={() =>
+                            onOpenReview(
+                              session
+                            )
+                          }
+                        >
+                          {session.status ===
+                          'reviewing'
+                            ? 'Resume Review'
+                            : 'Start Review'}
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             </>
           ) : (
-            <>
-              <p>
-                No session is
-                currently active.
-              </p>
+            <p>
+              No session is currently active.
+            </p>
+          )}
+
+          <div className="today-campfire">
+            <h3 className="subsection-title">
+              Campfire
+            </h3>
+
+            <div className="today-campfire-actions">
+              <button
+                type="button"
+                className="secondary-button compact-button"
+                onClick={() => {
+                  void handleOpenShareNotes()
+                }}
+              >
+                Share Notes
+              </button>
 
               <button
-                className="primary-button"
-                onClick={
-                  handleStartSession
-                }
-                disabled={
-                  isStarting
+                type="button"
+                className="secondary-button compact-button"
+                onClick={() =>
+                  campfireFileInputRef.current?.click()
                 }
               >
-                {isStarting
-                  ? 'Starting…'
-                  : 'Start New Session'}
+                Receive Notes
               </button>
-            </>
-          )}
+
+              <input
+                ref={campfireFileInputRef}
+                type="file"
+                accept=".json,application/json"
+                hidden
+                onChange={(event) => {
+                  const file =
+                    event.target.files?.[0]
+
+                  if (!file) {
+                    return
+                  }
+
+                  void parseCampfireFile(file)
+                    .then(async (campfirePackage) => {
+                      const sessions =
+                        await getCampfireShareableSessions(
+                          campaign.id
+                        )
+
+                      setCampfireReceiveSessions(
+                        sessions
+                      )
+
+                      setCampfireSessionMappings({})
+
+                      setReceivedCampfirePackage(
+                        campfirePackage
+                      )
+                    })
+                    .catch((error) => {
+                      console.error(
+                        'Could not read Campfire file.',
+                        error
+                      )
+
+                      setError(
+                        'This file could not be read as Campfire Notes.'
+                      )
+                    })
+                    .finally(() => {
+                      event.target.value = ''
+                    })
+                }}
+              />
+            </div>
+          </div>
 
           {error && (
             <p className="form-error">
@@ -2894,6 +3099,226 @@ function TodayPage({
           </label>
         </div>
       </section>
+
+      {showShareNotes && (
+        <Modal
+          onClose={() =>
+            setShowShareNotes(false)
+          }
+        >
+          <h2 className="modal-title">
+            Share Notes
+          </h2>
+
+          <p>
+            Choose the past Sessions whose
+            memories you want to share.
+          </p>
+
+          {campfireSessions.length > 0 ? (
+            <div className="campfire-session-list">
+              {campfireSessions.map(
+                (session) => {
+                  const isSelected =
+                    selectedCampfireSessionIds.includes(
+                      session.id
+                    )
+
+                  return (
+                    <label
+                      className="campfire-session-option"
+                      key={session.id}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {
+                          setSelectedCampfireSessionIds(
+                            (current) =>
+                              isSelected
+                                ? current.filter(
+                                    (id) =>
+                                      id !==
+                                      session.id
+                                  )
+                                : [
+                                    ...current,
+                                    session.id,
+                                  ]
+                          )
+                        }}
+                      />
+
+                      <span>
+                        <strong>
+                          Session{' '}
+                          {
+                            session.sessionNumber
+                          }
+                        </strong>
+
+                        {session.title.trim() && (
+                          <>
+                            {' — '}
+                            {session.title.trim()}
+                          </>
+                        )}
+                      </span>
+                    </label>
+                  )
+                }
+              )}
+            </div>
+          ) : (
+            <p className="empty-message">
+              There are no ended Sessions
+              available to share yet.
+            </p>
+          )}
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() =>
+                setShowShareNotes(false)
+              }
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                selectedCampfireSessionIds.length ===
+                0
+              }
+              onClick={() => {
+                void onExportCampfire(
+                  selectedCampfireSessionIds
+                ).then(() => {
+                  setShowShareNotes(false)
+                })
+              }}
+            >
+              Share Notes
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {receivedCampfirePackage && (
+        <Modal
+          onClose={() =>
+            setReceivedCampfirePackage(null)
+          }
+        >
+          <h2 className="modal-title">
+            Receive Notes
+          </h2>
+
+          <p>
+            Notes shared by{' '}
+            <strong>
+              {receivedCampfirePackage.senderName}
+            </strong>
+            .
+          </p>
+
+          <div className="campfire-received-sessions">
+            {receivedCampfirePackage.sessions.map(
+              (session, index) => (
+                <div
+                  className="campfire-received-session"
+                  key={index}
+                >
+                  <strong>
+                    Session{' '}
+                    {session.sessionNumber}
+                    {session.title.trim() && (
+                      <>
+                        {' — '}
+                        {session.title.trim()}
+                      </>
+                    )}
+                  </strong>
+
+                  <span>
+                    {session.quickNotes.length}{' '}
+                    {session.quickNotes.length === 1
+                      ? 'Quick Note'
+                      : 'Quick Notes'}
+                  </span>
+                  <select
+                    className="record-select"
+                    value={
+                      campfireSessionMappings[index] ??
+                      ''
+                    }
+                    onChange={(event) =>
+                      setCampfireSessionMappings(
+                        (current) => ({
+                          ...current,
+                          [index]: event.target.value,
+                        })
+                      )
+                    }
+                  >
+                    <option value="">
+                      Skip this Session
+                    </option>
+
+                    {campfireReceiveSessions.map(
+                      (localSession) => (
+                        <option
+                          key={localSession.id}
+                          value={localSession.id}
+                        >
+                          Session{' '}
+                          {localSession.sessionNumber}
+                          {localSession.title.trim()
+                            ? ` — ${localSession.title.trim()}`
+                            : ''}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setReceivedCampfirePackage(null)
+                setCampfireReceiveSessions([])
+                setCampfireSessionMappings({})
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                !Object.values(
+                  campfireSessionMappings
+                ).some(Boolean)
+              }
+              onClick={() => {
+                void handleReceiveCampfire()
+              }}
+            >
+              Receive Notes
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {showQuickNote &&
         activeSession && (
@@ -3336,6 +3761,11 @@ function CampaignApp({
     >([])
 
   const [
+    campfireReviewSessionIds,
+    setCampfireReviewSessionIds,
+  ] = useState<string[]>([])
+
+  const [
     reviewSession,
     setReviewSession,
   ] =
@@ -3395,16 +3825,28 @@ function CampaignApp({
         )
 
         setOpenReviews([])
+        setCampfireReviewSessionIds([])
       } else {
         setQuickNotes([])
 
-        const reviews =
-          await getOpenReviews(
+        const [
+          reviews,
+          campfireSessionIds,
+        ] = await Promise.all([
+          getOpenReviews(
             campaign.id
-          )
+          ),
+          getOpenReviewCampfireSessionIds(
+            campaign.id
+          ),
+        ])
 
         setOpenReviews(
           reviews
+        )
+
+        setCampfireReviewSessionIds(
+          campfireSessionIds
         )
       }
 
@@ -3545,9 +3987,44 @@ function CampaignApp({
     }
   }
 
-  async function handleOpenReview(
-    session: Session
-  ) {
+    async function handleExportCampfire(
+      sessionIds: string[]
+    ) {
+      try {
+        await downloadCampfirePackage(
+          campaign.id,
+          sessionIds
+        )
+      } catch (error) {
+        console.error(
+          'Campfire export failed.',
+          error
+        )
+
+        throw error
+      }
+    }
+
+    async function handleCampfireReceived() {
+      const [
+        reviews,
+        campfireSessionIds,
+      ] = await Promise.all([
+        getOpenReviews(campaign.id),
+        getOpenReviewCampfireSessionIds(
+          campaign.id
+        ),
+      ])
+
+      setOpenReviews(reviews)
+      setCampfireReviewSessionIds(
+        campfireSessionIds
+      )
+    }
+
+    async function handleOpenReview(
+      session: Session
+    ) {
     const result =
       await startOrResumeReview(
         session.id
@@ -3556,6 +4033,11 @@ function CampaignApp({
     const notes =
       await getQuickNotesForSession(
         session.id
+      )
+
+    const uncommittedReviewItems =
+      await getUncommittedReviewItems(
+        result.reviewDraft.id
       )
 
     setReviewSession({
@@ -3568,7 +4050,7 @@ function CampaignApp({
     )
 
     setReviewItems(
-      result.reviewItems
+      uncommittedReviewItems
     )
 
     setReviewQuickNotes(
@@ -3762,11 +4244,14 @@ function CampaignApp({
             activeSession={activeSession}
             quickNotes={quickNotes}
             openReviews={openReviews}
+            campfireReviewSessionIds={campfireReviewSessionIds}
             onStartSession={handleStartSession}
             onEndSession={handleEndSession}
             onSessionTitleChange={handleSessionTitleChange}
             onExportCampaign={handleExportCampaign}
             onImportCampaign={onImportCampaign}
+            onExportCampfire={handleExportCampfire}
+            onCampfireReceived={handleCampfireReceived}
             onQuickNoteSaved={(quickNote) =>
               setQuickNotes((current) => [
                 ...current,
@@ -3851,6 +4336,11 @@ function App() {
   ] =
     useState(true)
 
+  const [
+    campaignRevision,
+    setCampaignRevision,
+  ] = useState(0)
+
   useEffect(() => {
     async function loadCampaigns() {
       const existingCampaigns =
@@ -3906,7 +4396,11 @@ async function handleImportCampaign(
         )
 
         setCampaign(
-          restoredCampaign
+          result.campaign
+        )
+
+        setCampaignRevision(
+          (current) => current + 1
         )
 
         alert(
@@ -4006,6 +4500,7 @@ async function handleImportCampaign(
 
   return (
     <CampaignApp
+      key={`${campaign.id}-${campaignRevision}`}
       campaign={campaign}
       onSwitchCampaign={() =>
         setCampaign(undefined)
@@ -4433,14 +4928,15 @@ function CharacterModulePage({
     <>
       <section className="page left-page distress-b">
         <div className="page-heading-with-status">
-            <div>
-                <h1 className="page-title">
+            <div className="page-heading-copy">
+            <h1 className="page-title">
                 Ferret
-                </h1>
+            </h1>
 
-                <p className="subtitle">
-                Small Animal Companion
-                </p>
+            <p className="page-intro">
+                Small paws, sharp instincts,
+                questionable priorities.
+            </p>
             </div>
 
                         <div className="page-heading-actions">
@@ -6874,14 +7370,14 @@ const groupedDiscoveries =
     <>
       <section className="page left-page distress-e discoveries-page">
         <div className="page-heading-with-status">
-          <div>
+          <div className="page-heading-copy">
             <h1 className="page-title">
               Discoveries
             </h1>
 
-            <p className="subtitle">
-              Discoveries from{' '}
-              {campaign.name}
+            <p className="page-intro">
+              Places, secrets, and things
+              perhaps best left undisturbed.
             </p>
           </div>
 
@@ -7081,6 +7577,7 @@ const groupedDiscoveries =
                 ) : (
                   <div className="discovery-category-add">
                     <input
+                      className="discovery-category-add-input"
                       value={newCategoryName}
                       onChange={(event) =>
                         setNewCategoryName(
@@ -7107,6 +7604,7 @@ const groupedDiscoveries =
 
                     <button
                       type="button"
+                      className="primary-button compact-button discovery-category-add-button"
                       onClick={() =>
                         void addCategory()
                       }
@@ -7116,6 +7614,7 @@ const groupedDiscoveries =
 
                     <button
                       type="button"
+                      className="secondary-button compact-button"
                       onClick={() => {
                         setIsAddingCategory(false)
                         setNewCategoryName('')
@@ -7147,6 +7646,7 @@ const groupedDiscoveries =
                         Category
 
                         <select
+                          className="record-select"
                           value={deleteCategoryId}
                           onChange={(event) => {
                             const categoryId =
@@ -7348,6 +7848,7 @@ const groupedDiscoveries =
                 </span>
 
                 <select
+                  className="record-select"
                   value={
                     selectedDiscovery.categoryId
                   }
@@ -7396,6 +7897,7 @@ const groupedDiscoveries =
 
                   <div className="discovery-merge-controls">
                     <select
+                      className="record-select"
                       value={mergeTargetId}
                       onChange={(event) =>
                         setMergeTargetId(
@@ -8123,11 +8625,11 @@ export default function GoalsPage({
     <>
       <section className="page left-page goals-page distress-c">
         <div className="page-heading-with-status">
-          <div>
+          <div className="page-heading-copy">
             <h1 className="page-title">Goals</h1>
 
-            <p className="subtitle">
-              What matters next
+            <p className="page-intro">
+              Ambitions worth chasing, before the dungeon changes its mind.
             </p>
           </div>
 
@@ -8430,13 +8932,16 @@ export default function GuidePage() {
   return (
     <>
       <section className="page left-page distress-c guide-page">
+        <div className="page-heading-copy">
         <h1 className="page-title">
-          Guide
+            Guide
         </h1>
 
-        <p className="subtitle">
-          How to use your Campaign Guide
+        <p className="page-intro">
+            For when memory, instinct,
+            and guesswork have all failed.
         </p>
+        </div>
 
         <div className="guide-topic-list">
           {guideTopics.map((topic) => (
@@ -8759,14 +9264,14 @@ const filteredSessions =
     <>
       <section className="page left-page distress-f journal-page">
         <div className="page-heading-with-status">
-          <div>
+          <div className="page-heading-copy">
             <h1 className="page-title">
               Journal
             </h1>
 
-            <p className="subtitle">
-              Completed Sessions from{' '}
-              {campaign.name}
+            <p className="page-intro">
+              The tale of your adventures,
+              as best anyone remembers them.
             </p>
           </div>
 
@@ -8895,13 +9400,14 @@ import {
   getSessionsForEntry,
   mergePeople,
   updatePersonName,
-  updatePersonDescription,
+  updatePersonRelationship,
   updatePersonNotes,
 } from '../data/repository'
 
 import type {
   Campaign,
   Person,
+  PersonRelationship,
   Session,
 } from '../data/database'
 
@@ -8950,19 +9456,12 @@ export default function PeoplePage({
   )
 
   const [
-    descriptionDraft,
-    setDescriptionDraft,
-  ] = useState('')
-
-  const descriptionEditorRef =
-    useRef<HTMLTextAreaElement | null>(
-      null
+    relationshipDraft,
+    setRelationshipDraft,
+  ] =
+    useState<PersonRelationship>(
+      'unknown'
     )
-
-  useAutoGrowTextarea(
-    descriptionEditorRef,
-    descriptionDraft
-  )
 
   const [
     nameDraft,
@@ -9033,7 +9532,7 @@ export default function PeoplePage({
       if (!selectedPerson) {
         setRelatedSessions([])
         setNotesDraft('')
-        setDescriptionDraft('')
+        setRelationshipDraft('unknown')
         setNameDraft('')
         setMergeTargetId('')
         return
@@ -9071,8 +9570,8 @@ export default function PeoplePage({
           contributionText
       )
 
-      setDescriptionDraft(
-        selectedPerson.description ?? ''
+      setRelationshipDraft(
+        selectedPerson.relationship
       )
 
       setNameDraft(
@@ -9145,9 +9644,9 @@ export default function PeoplePage({
         try {
           setSaveStatus('saving')
 
-          await updatePersonDescription(
+          await updatePersonRelationship(
             selectedPersonId,
-            descriptionDraft
+            relationshipDraft
           )
 
           setPeople((current) =>
@@ -9155,8 +9654,8 @@ export default function PeoplePage({
               person.id === selectedPersonId
                 ? {
                     ...person,
-                    description:
-                      descriptionDraft,
+                    relationship:
+                      relationshipDraft,
                   }
                 : person
             )
@@ -9165,7 +9664,7 @@ export default function PeoplePage({
           setSaveStatus('saved')
         } catch (error) {
           console.error(
-            'Could not save Person description.',
+            'Could not save Person relationship.',
             error
           )
           setSaveStatus('error')
@@ -9176,7 +9675,7 @@ export default function PeoplePage({
       window.clearTimeout(timeout)
     }
   }, [
-    descriptionDraft,
+    relationshipDraft,
     selectedPersonId,
   ])
 
@@ -9246,7 +9745,7 @@ export default function PeoplePage({
       ? people.filter((person) => {
           const searchableText = [
             person.name,
-            person.description ?? '',
+            person.relationship ?? '',
             person.notes ?? '',
           ]
             .join(' ')
@@ -9283,11 +9782,14 @@ export default function PeoplePage({
     <>
       <section className="page left-page distress-d people-page">
         <div className="page-heading-with-status">
-          <div>
-            <h1 className="page-title">People</h1>
+          <div className="page-heading-copy">
+            <h1 className="page-title">
+              People
+            </h1>
 
-            <p className="subtitle">
-              People known in {campaign.name}
+            <p className="page-intro">
+              Friends, foes, and those
+              yet to reveal which.
             </p>
           </div>
 
@@ -9388,94 +9890,143 @@ export default function PeoplePage({
               Delete Person
             </button>
             </div>
-            {people.length > 1 && (
-              <div className="person-merge-controls">
+            <div className="discovery-top-meta-row">
+              <label className="discovery-category-field">
+                <span className="section-title discovery-category-field-heading">
+                  Relationship
+                </span>
+
                 <select
-                  value={mergeTargetId}
+                  className="record-select"
+                  value={relationshipDraft}
                   onChange={(event) =>
-                    setMergeTargetId(
-                      event.target.value
+                    setRelationshipDraft(
+                      event.target
+                        .value as PersonRelationship
                     )
                   }
                 >
-                  <option value="">
-                    Merge with…
+                  <option value="unknown">
+                    Unknown
                   </option>
-
-                  {people
-                    .filter(
-                      (person) =>
-                        person.id !==
-                        selectedPerson.id
-                    )
-                    .map((person) => (
-                      <option
-                        key={person.id}
-                        value={person.id}
-                      >
-                        {person.name}
-                      </option>
-                    ))}
+                  <option value="stranger">
+                    Stranger
+                  </option>
+                  <option value="ally">
+                    Ally
+                  </option>
+                  <option value="neutral">
+                    Neutral
+                  </option>
+                  <option value="rival">
+                    Rival
+                  </option>
+                  <option value="foe">
+                    Foe
+                  </option>
                 </select>
+              </label>
 
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={!mergeTargetId}
-                  onClick={() => {
-                    if (!mergeTarget) {
-                      return
-                    }
+              {people.length > 1 && (
+                <div className="discovery-merge-area">
+                  <span className="discovery-category-field-heading">
+                    Merge with...
+                  </span>
 
-                    void Promise.all([
-                      getNoteContributions(
-                        'person',
-                        selectedPerson.id
-                      ),
-                      getNoteContributions(
-                        'person',
-                        mergeTarget.id
-                      ),
-                    ]).then(
-                      ([
-                        survivorContributions,
-                        targetContributions,
-                      ]) => {
-                        const contributions = [
-                          ...survivorContributions,
-                          ...targetContributions,
-                        ].sort((a, b) => {
-                          const timeComparison =
-                            a.createdAt.localeCompare(
-                              b.createdAt
-                            )
-
-                          if (timeComparison !== 0) {
-                            return timeComparison
-                          }
-
-                          return a.id.localeCompare(b.id)
-                        })
-
-                        setMergePreviewNotes(
-                          contributions
-                            .map(
-                              (contribution) =>
-                                contribution.text
-                            )
-                            .filter(Boolean)
-                            .join('\n')
+                  <div className="discovery-merge-controls">
+                    <select
+                      className="record-select"
+                      value={mergeTargetId}
+                      onChange={(event) =>
+                        setMergeTargetId(
+                          event.target.value
                         )
-
-                        setShowMergePreview(true)
                       }
-                    )
-                  }}
-                >
-                  Merge
-                </button>
-              </div>
-            )}
+                    >
+                      <option value="">
+                        Select Person...
+                      </option>
+
+                      {people
+                        .filter(
+                          (person) =>
+                            person.id !==
+                            selectedPerson.id
+                        )
+                        .map((person) => (
+                          <option
+                            key={person.id}
+                            value={person.id}
+                          >
+                            {person.name}
+                          </option>
+                        ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={!mergeTargetId}
+                      onClick={() => {
+                        if (!mergeTarget) {
+                          return
+                        }
+
+                        void Promise.all([
+                          getNoteContributions(
+                            'person',
+                            selectedPerson.id
+                          ),
+                          getNoteContributions(
+                            'person',
+                            mergeTarget.id
+                          ),
+                        ]).then(
+                          ([
+                            survivorContributions,
+                            targetContributions,
+                          ]) => {
+                            const contributions = [
+                              ...survivorContributions,
+                              ...targetContributions,
+                            ].sort((a, b) => {
+                              const timeComparison =
+                                a.createdAt.localeCompare(
+                                  b.createdAt
+                                )
+
+                              if (
+                                timeComparison !== 0
+                              ) {
+                                return timeComparison
+                              }
+
+                              return a.id.localeCompare(
+                                b.id
+                              )
+                            })
+
+                            setMergePreviewNotes(
+                              contributions
+                                .map(
+                                  (contribution) =>
+                                    contribution.text
+                                )
+                                .filter(Boolean)
+                                .join('\n')
+                            )
+
+                            setShowMergePreview(true)
+                          }
+                        )
+                      }}
+                    >
+                      Merge
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             {showMergePreview &&
               mergeTarget && (
                 <div
@@ -9566,21 +10117,6 @@ export default function PeoplePage({
                   </div>
                 </div>
               )}
-            <div className="page-section">
-              <h2 className="section-title">Description</h2>
-
-              <textarea
-                ref={descriptionEditorRef}
-                className="writing-textarea person-description-editor"
-                value={descriptionDraft}
-                onChange={(event) =>
-                  setDescriptionDraft(
-                    event.target.value
-                  )
-                }
-                placeholder="No description yet."
-              />
-            </div>
 
             <div className="page-section">
               <h2 className="section-title">Notes</h2>
@@ -9925,11 +10461,14 @@ export default function RemindersPage({
     <>
       <section className="page left-page reminders-page distress-b">
         <div className="page-heading-with-status">
-          <div>
-            <h1 className="page-title">Reminders</h1>
+          <div className="page-heading-copy">
+            <h1 className="page-title">
+              Reminders
+            </h1>
 
-            <p className="subtitle">
-              Useful things to keep close
+            <p className="page-intro">
+              Loose ends worth remembering
+              before they come back to bite.
             </p>
           </div>
 

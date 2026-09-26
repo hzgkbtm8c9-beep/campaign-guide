@@ -2,12 +2,14 @@ export type GuideTopicId =
   | 'getting-started'
   | 'today'
   | 'character'
-  | 'ferret'
+  | 'companion'
+  | 'weather'
   | 'goals'
   | 'people'
   | 'discoveries'
   | 'journal'
   | 'reminders'
+  | 'campfire'
   | 'review'
 
 export type GuideTopic = {
@@ -42,6 +44,7 @@ export const guideTopics: GuideTopic[] = [
       'Start a Session when the adventure begins. This gives you a place to collect Quick Notes as you play.',
       'Quick Notes are meant to be quick. Jot down the important bit now and sort out where it belongs later.',
       'When you end the Session, its Quick Notes are waiting for you in Session Review. Nothing is added to Journal, People, or Discoveries until you complete that Review.',
+    'Campfire Sharing on Today lets you exchange Quick Notes from finished Sessions with other Campaign Guide users.',   
     ],
   },
   {
@@ -57,7 +60,7 @@ export const guideTopics: GuideTopic[] = [
     ],
   },
   {
-    id: 'ferret',
+    id: 'companion',
     title: 'Companion',
     purpose:
       'Companion is home to the creature sharing your adventures — and, presumably, some of your rations.',
@@ -65,6 +68,23 @@ export const guideTopics: GuideTopic[] = [
       'Your companion and its information stay with you between adventures.',
       'Keep its details up to date as things change during the campaign.',
       'Abilities can be added, edited, and removed as your companion develops and acquires new tricks.',
+    ],
+  },
+  {
+    id: 'weather',
+
+    title: 'Weather',
+
+    purpose:
+      'Weather keeps track of whatever the skies decide to throw at your adventure — fair winds, foul weather, and everything waiting on the road between.',
+    
+    howItWorks: [
+      'Choose a season to view its weather hex. Changing the season you are viewing does not change the current weather.',
+      'At the start of a season, roll 2d6 and find the corresponding number on that season’s weather hex.',
+      'Select the matching weather hex to make it the current weather. Your current weather is saved automatically and stays in place between sessions.',
+      'At the beginning of a day, roll 2d6 on the movement hex to see how the weather changes. Move from the current weather hex in the indicated direction, then select the new weather.',
+      'A roll of 9 or 10 means the weather repeats and does not move to another hex.',
+      'The triangle (▲) marks hindering weather conditions.',
     ],
   },
   {
@@ -126,6 +146,22 @@ export const guideTopics: GuideTopic[] = [
       'Reminders stay around between sessions until you change or remove them.',
       'They live in their own section and do not automatically appear on Today.',
       'Changes to Reminders are saved automatically.',
+    ],
+  },
+    {
+    id: 'campfire',
+    title: 'Campfire Sharing',
+    purpose:
+      'Campfire Sharing lets adventurers trade the tales, clues, and hurried notes gathered along the road — because no two companions remember quite the same adventure.',
+    howItWorks: [
+      'Open the Campfire controls on Today when you want to exchange notes with another Campaign Guide user.',
+      'Share Notes lets you choose one or more finished Sessions and creates a Campfire file containing their Quick Notes.',
+      'Quick Notes that you previously received through Campfire are not shared again.',
+      'Receive Notes lets you open a Campfire file and decide which of the sender’s Sessions belong with which of your own finished Sessions. Sessions you do not want to import can be skipped.',
+      'Received notes join the selected Session as new Quick Notes and are handled through Session Review just like your own notes.',
+      'If a Review is already in progress, the received notes are added to it. If the Review was already completed, it is reopened so the new notes can be reviewed.',
+      'A flame (🔥) marks Quick Notes received through Campfire. On Today, the same flame marks an Open Review that still contains Campfire notes waiting to be dealt with.',
+      'Campfire remembers which shared notes you have already received, so importing the same notes again will not create duplicates.',
     ],
   },
   {

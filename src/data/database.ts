@@ -96,24 +96,28 @@ export interface EquipmentItem {
   updatedAt: string
 }
 
-export type FerretRelationship =
+export type CompanionRelationship =
   | 'wary'
   | 'tolerant'
   | 'friendly'
   | 'trusting'
   | 'bonded'
 
-export type FerretHunger =
+export type CompanionHunger =
   | 'full'
   | 'hungry'
   | 'starving'
+
+export type CharacterModuleType =
+  | 'companion'
+  | 'weather'
 
 export interface CharacterModule {
   id: string
   campaignId: string
   characterId: string
 
-  moduleType: 'ferret'
+  moduleType: CharacterModuleType
   title: string
   sortPosition: number
 
@@ -121,25 +125,41 @@ export interface CharacterModule {
   updatedAt: string
 }
 
-export interface FerretModuleData {
+export interface CompanionModuleData {
   characterModuleId: string
 
   name: string
   description: string
-  relationship: FerretRelationship
-  hunger: FerretHunger
+  relationship: CompanionRelationship
+  hunger: CompanionHunger
 
   createdAt: string
   updatedAt: string
 }
 
-export interface FerretAbility {
+export interface CompanionAbility {
   id: string
   characterModuleId: string
 
   name: string
   description: string
   sortPosition: number
+
+  createdAt: string
+  updatedAt: string
+}
+
+export type WeatherSeason =
+  | 'spring'
+  | 'summer'
+  | 'autumn'
+  | 'winter'
+
+export interface WeatherModuleData {
+  characterModuleId: string
+
+  currentSeason?: WeatherSeason
+  currentHexId?: string
 
   createdAt: string
   updatedAt: string
@@ -168,6 +188,7 @@ export interface Goal {
 
   hasSetback: boolean
   status: GoalStatus
+  pinnedToToday: boolean
 
   createdAt: string
   updatedAt: string
@@ -180,6 +201,7 @@ export interface Reminder {
   title: string
   todaySummary: string
   content: string
+  pinnedToToday: boolean
 
   createdAt: string
   updatedAt: string
@@ -204,6 +226,8 @@ export interface QuickNote {
   id: string
   campaignId: string
   sessionId: string
+  shareId: string
+  receivedViaCampfire: boolean
   text: string
   capturedAt: string
   createdAt: string
@@ -264,6 +288,7 @@ export interface ReviewItem {
   quickNoteId: string
   workingText: string
   isDiscarded: boolean
+  committedAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -353,14 +378,19 @@ class CampaignGuideDatabase extends Dexie {
     'id'
   >
 
-  ferretModuleData!: EntityTable<
-    FerretModuleData,
+  companionModuleData!: EntityTable<
+    CompanionModuleData,
     'characterModuleId'
   >
 
-  ferretAbilities!: EntityTable<
-    FerretAbility,
+  companionAbilities!: EntityTable<
+    CompanionAbility,
     'id'
+  >
+
+  weatherModuleData!: EntityTable<
+    WeatherModuleData,
+    'characterModuleId'
   >
 
   goals!: EntityTable<Goal, 'id'>
@@ -1117,6 +1147,372 @@ class CampaignGuideDatabase extends Dexie {
               delete person.description
             })
         })
+              this.version(20)
+        .stores({
+          campaigns:
+            'id, name, createdAt',
+
+          characters:
+            'id, campaignId, name, updatedAt',
+
+          equipmentItems:
+            'id, campaignId, characterId, type, sortPosition, updatedAt',
+
+          characterModules:
+            'id, campaignId, characterId, moduleType, sortPosition, updatedAt',
+
+          ferretModuleData:
+            'characterModuleId, relationship, hunger, updatedAt',
+
+          ferretAbilities:
+            'id, characterModuleId, sortPosition, updatedAt',
+
+          goals:
+            'id, campaignId, term, status, hasSetback, updatedAt',
+
+          reminders:
+            'id, campaignId, updatedAt',
+
+          sessions:
+            'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+          quickNotes:
+            'id, campaignId, sessionId, capturedAt, shareId',
+
+          people:
+            'id, campaignId, name, createdAt',
+
+          discoveryCategories:
+            'id, campaignId, name, sortPosition',
+
+          discoveries:
+            'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+          reviewDrafts:
+            'id, campaignId, sessionId, status, currentReviewItemId',
+
+          reviewItems:
+            'id, reviewDraftId, quickNoteId, committedAt',
+
+          reviewDraftPeople:
+            'id, reviewDraftId, name, createdAt',
+
+          reviewDraftCategories:
+            'id, reviewDraftId, name, createdAt',
+
+          reviewDraftDiscoveries:
+            'id, reviewDraftId, title, categoryRef, createdAt',
+
+          reviewDestinations:
+            'id, reviewItemId, destinationType, targetId',
+
+          noteContributions:
+            'id, campaignId, targetType, targetId, sessionId, createdAt',
+
+          entityRedirects:
+            'id, campaignId, entityType, obsoleteId, survivorId, createdAt',
+        })
+        .upgrade(async (transaction) => {
+          const quickNotes =
+            transaction.table('quickNotes')
+
+          await quickNotes
+            .toCollection()
+            .modify((quickNote) => {
+              quickNote.shareId =
+                quickNote.shareId ??
+                quickNote.id
+            })
+
+          const completedDrafts =
+            await transaction
+              .table('reviewDrafts')
+              .where('status')
+              .equals('completed')
+              .toArray()
+
+          for (const draft of completedDrafts) {
+            await transaction
+              .table('reviewItems')
+              .where('reviewDraftId')
+              .equals(draft.id)
+              .modify((reviewItem) => {
+                reviewItem.committedAt =
+                  reviewItem.committedAt ??
+                  draft.updatedAt
+              })
+          }
+        })
+        this.version(21)
+          .stores({
+          campaigns:
+            'id, name, createdAt',
+
+          characters:
+            'id, campaignId, name, updatedAt',
+
+          equipmentItems:
+            'id, campaignId, characterId, type, sortPosition, updatedAt',
+
+          characterModules:
+            'id, campaignId, characterId, moduleType, sortPosition, updatedAt',
+
+          ferretModuleData:
+            'characterModuleId, relationship, hunger, updatedAt',
+
+          ferretAbilities:
+            'id, characterModuleId, sortPosition, updatedAt',
+
+          goals:
+            'id, campaignId, term, status, hasSetback, updatedAt',
+
+          reminders:
+            'id, campaignId, updatedAt',
+
+          sessions:
+            'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+          quickNotes:
+            'id, campaignId, sessionId, capturedAt, shareId',
+
+          people:
+            'id, campaignId, name, createdAt',
+
+          discoveryCategories:
+            'id, campaignId, name, sortPosition',
+
+          discoveries:
+            'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+          reviewDrafts:
+            'id, campaignId, sessionId, status, currentReviewItemId',
+
+          reviewItems:
+            'id, reviewDraftId, quickNoteId, committedAt',
+
+          reviewDraftPeople:
+            'id, reviewDraftId, name, createdAt',
+
+          reviewDraftCategories:
+            'id, reviewDraftId, name, createdAt',
+
+          reviewDraftDiscoveries:
+            'id, reviewDraftId, title, categoryRef, createdAt',
+
+          reviewDestinations:
+            'id, reviewItemId, destinationType, targetId',
+
+          noteContributions:
+            'id, campaignId, targetType, targetId, sessionId, createdAt',
+
+          entityRedirects:
+            'id, campaignId, entityType, obsoleteId, survivorId, createdAt',
+        })
+          .upgrade(async (transaction) => {
+            await transaction
+              .table('quickNotes')
+              .toCollection()
+              .modify((quickNote) => {
+                quickNote.receivedViaCampfire =
+                  quickNote.receivedViaCampfire ??
+                  false
+              })
+          })
+          this.version(22)
+            .stores({
+              campaigns:
+                'id, name, createdAt',
+
+              characters:
+                'id, campaignId, name, updatedAt',
+
+              equipmentItems:
+                'id, campaignId, characterId, type, sortPosition, updatedAt',
+
+              characterModules:
+                'id, campaignId, characterId, moduleType, sortPosition, updatedAt',
+
+              companionModuleData:
+                'characterModuleId, relationship, hunger, updatedAt',
+
+              companionAbilities:
+                'id, characterModuleId, sortPosition, updatedAt',
+
+              weatherModuleData:
+                'characterModuleId, currentSeason, updatedAt',
+
+              ferretModuleData: null,
+
+              ferretAbilities: null,
+
+              goals:
+                'id, campaignId, term, status, hasSetback, updatedAt',
+
+              reminders:
+                'id, campaignId, updatedAt',
+
+              sessions:
+                'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+              quickNotes:
+                'id, campaignId, sessionId, capturedAt, shareId',
+
+              people:
+                'id, campaignId, name, createdAt',
+
+              discoveryCategories:
+                'id, campaignId, name, sortPosition',
+
+              discoveries:
+                'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+              reviewDrafts:
+                'id, campaignId, sessionId, status, currentReviewItemId',
+
+              reviewItems:
+                'id, reviewDraftId, quickNoteId, committedAt',
+
+              reviewDraftPeople:
+                'id, reviewDraftId, name, createdAt',
+
+              reviewDraftCategories:
+                'id, reviewDraftId, name, createdAt',
+
+              reviewDraftDiscoveries:
+                'id, reviewDraftId, title, categoryRef, createdAt',
+
+              reviewDestinations:
+                'id, reviewItemId, destinationType, targetId',
+
+              noteContributions:
+                'id, campaignId, targetType, targetId, sessionId, createdAt',
+
+              entityRedirects:
+                'id, campaignId, entityType, obsoleteId, survivorId, createdAt',
+            })
+            .upgrade(async (transaction) => {
+              const oldFerretModuleData =
+                await transaction
+                  .table('ferretModuleData')
+                  .toArray()
+
+              if (oldFerretModuleData.length > 0) {
+                await transaction
+                  .table('companionModuleData')
+                  .bulkAdd(oldFerretModuleData)
+              }
+
+              const oldFerretAbilities =
+                await transaction
+                  .table('ferretAbilities')
+                  .toArray()
+
+              if (oldFerretAbilities.length > 0) {
+                await transaction
+                  .table('companionAbilities')
+                  .bulkAdd(oldFerretAbilities)
+              }
+
+                            await transaction
+                .table('characterModules')
+                .toCollection()
+                .modify((module) => {
+                  if (
+                    module.moduleType === 'ferret'
+                  ) {
+                    module.moduleType =
+                      'companion'
+
+                    if (module.title === 'Ferret') {
+                      module.title = 'Companion'
+                    }
+                  }
+                })
+            })
+
+    this.version(23)
+      .stores({
+        campaigns:
+          'id, name, createdAt',
+
+        characters:
+          'id, campaignId, name, updatedAt',
+
+        equipmentItems:
+          'id, campaignId, characterId, type, sortPosition, updatedAt',
+
+        characterModules:
+          'id, campaignId, characterId, moduleType, sortPosition, updatedAt',
+
+        companionModuleData:
+          'characterModuleId, relationship, hunger, updatedAt',
+
+        companionAbilities:
+          'id, characterModuleId, sortPosition, updatedAt',
+
+        weatherModuleData:
+          'characterModuleId, currentSeason, updatedAt',
+
+        goals:
+          'id, campaignId, term, status, hasSetback, updatedAt',
+
+        reminders:
+          'id, campaignId, updatedAt',
+
+        sessions:
+          'id, campaignId, sessionNumber, status, startedAt, retiredAt',
+
+        quickNotes:
+          'id, campaignId, sessionId, capturedAt, shareId',
+
+        people:
+          'id, campaignId, name, createdAt',
+
+        discoveryCategories:
+          'id, campaignId, name, sortPosition',
+
+        discoveries:
+          'id, campaignId, title, categoryId, discoveredInSessionId, createdAt',
+
+        reviewDrafts:
+          'id, campaignId, sessionId, status, currentReviewItemId',
+
+        reviewItems:
+          'id, reviewDraftId, quickNoteId, committedAt',
+
+        reviewDraftPeople:
+          'id, reviewDraftId, name, createdAt',
+
+        reviewDraftCategories:
+          'id, reviewDraftId, name, createdAt',
+
+        reviewDraftDiscoveries:
+          'id, reviewDraftId, title, categoryRef, createdAt',
+
+        reviewDestinations:
+          'id, reviewItemId, destinationType, targetId',
+
+        noteContributions:
+          'id, campaignId, targetType, targetId, sessionId, createdAt',
+
+        entityRedirects:
+          'id, campaignId, entityType, obsoleteId, survivorId, createdAt',
+      })
+      .upgrade(async (transaction) => {
+        await transaction
+          .table('goals')
+          .toCollection()
+          .modify((goal) => {
+            goal.pinnedToToday = false
+          })
+
+        await transaction
+          .table('reminders')
+          .toCollection()
+          .modify((reminder) => {
+            reminder.pinnedToToday = false
+          })
+      })
   }
 }
 

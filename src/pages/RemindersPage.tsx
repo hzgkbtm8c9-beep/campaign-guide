@@ -19,6 +19,7 @@ import type {
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
 import { SaveStatus } from '../components/SaveStatus'
 import GuideHelpButton from '../components/GuideHelpButton'
+import ConfirmModal from '../components/ConfirmModal'
 
 export default function RemindersPage({
   campaign,
@@ -34,6 +35,16 @@ export default function RemindersPage({
     selectedReminderId,
     setSelectedReminderId,
   ] = useState<string | undefined>()
+
+  const [
+    reminderPendingDeletion,
+    setReminderPendingDeletion,
+  ] = useState<Reminder | null>(null)
+
+  const [
+    isDeletingReminder,
+    setIsDeletingReminder,
+  ] = useState(false)
 
   const [
     isLoading,
@@ -163,6 +174,8 @@ export default function RemindersPage({
                   selectedReminder.todaySummary,
                 content:
                   selectedReminder.content,
+                pinnedToToday:
+                  selectedReminder.pinnedToToday,
               }
             )
 
@@ -193,49 +206,53 @@ export default function RemindersPage({
     selectedReminder?.title,
     selectedReminder?.todaySummary,
     selectedReminder?.content,
+    selectedReminder?.pinnedToToday,
   ])
 
   async function handleDelete() {
-    if (!selectedReminder) {
+    if (
+      !reminderPendingDeletion ||
+      isDeletingReminder
+    ) {
       return
     }
 
-    const confirmed =
-      window.confirm(
-        `Delete "${
-          selectedReminder.title ||
-          'Untitled Reminder'
-        }"?`
-      )
-
-    if (!confirmed) {
-      return
-    }
+    const reminderToDelete =
+      reminderPendingDeletion
 
     try {
+      setIsDeletingReminder(true)
+
       await deleteReminder(
-        selectedReminder.id
+        reminderToDelete.id
       )
 
       const remaining =
         reminders.filter(
           (reminder) =>
             reminder.id !==
-            selectedReminder.id
+            reminderToDelete.id
         )
 
-      setReminders(
-        remaining
-      )
+      setReminders(remaining)
 
-      setSelectedReminderId(
-        remaining[0]?.id
-      )
+      if (
+        selectedReminderId ===
+        reminderToDelete.id
+      ) {
+        setSelectedReminderId(
+          remaining[0]?.id
+        )
+      }
+
+      setReminderPendingDeletion(null)
     } catch (error) {
       console.error(
         'Could not delete Reminder.',
         error
       )
+    } finally {
+      setIsDeletingReminder(false)
     }
   }
 
@@ -339,7 +356,9 @@ export default function RemindersPage({
                 <button
                   className="destructive-button reminder-delete-button"
                   onClick={() =>
-                    void handleDelete()
+                    setReminderPendingDeletion(
+                      selectedReminder
+                    )
                   }
                 >
                   Delete Reminder
@@ -349,7 +368,30 @@ export default function RemindersPage({
 
                 <div className="reminder-editor">
                   <div className="page-section reminder-summary-field">
-                    <h2 className="section-title">Today Summary</h2>
+                    <div className="reminder-summary-heading">
+                      <h2 className="section-title">
+                        Today Summary
+                      </h2>
+
+                      <label className="reminder-pin-toggle">
+                        <input
+                          type="checkbox"
+                          checked={
+                            selectedReminder.pinnedToToday
+                          }
+                          onChange={(event) =>
+                            changeSelectedReminder({
+                              pinnedToToday:
+                                event.target.checked,
+                            })
+                          }
+                        />
+
+                        <span>
+                          Pin to Today
+                        </span>
+                      </label>
+                    </div>
 
                     <input
                       value={selectedReminder.todaySummary}
@@ -361,7 +403,7 @@ export default function RemindersPage({
                       placeholder="Short phrase shown on Today"
                     />
                   </div>
-
+                  
                   <div className="page-section reminder-content-field">
                     <h2 className="section-title">Notes</h2>
 
@@ -387,8 +429,26 @@ export default function RemindersPage({
               Add a Reminder to get started.
             </p>
           </div>
-        )}
+                )}
       </section>
+
+      {reminderPendingDeletion && (
+        <ConfirmModal
+          title="Delete Reminder?"
+          message={`Delete "${
+            reminderPendingDeletion.title ||
+            'Untitled Reminder'
+          }"? This cannot be undone.`}
+          confirmLabel="Delete Reminder"
+          isConfirming={isDeletingReminder}
+          onCancel={() =>
+            setReminderPendingDeletion(null)
+          }
+          onConfirm={() =>
+            void handleDelete()
+          }
+        />
+      )}
     </>
   )
 }

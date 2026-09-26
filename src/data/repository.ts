@@ -70,8 +70,9 @@ export async function deleteCampaign(
       db.characters,
       db.equipmentItems,
       db.characterModules,
-      db.ferretModuleData,
-      db.ferretAbilities,
+      db.companionModuleData,
+      db.companionAbilities,
+      db.weatherModuleData,
       db.goals,
       db.reminders,
       db.sessions,
@@ -187,12 +188,17 @@ export async function deleteCampaign(
         )
 
       if (characterModuleIds.length > 0) {
-        await db.ferretAbilities
+        await db.companionAbilities
           .where('characterModuleId')
           .anyOf(characterModuleIds)
           .delete()
 
-        await db.ferretModuleData
+        await db.companionModuleData
+          .where('characterModuleId')
+          .anyOf(characterModuleIds)
+          .delete()
+
+        await db.weatherModuleData
           .where('characterModuleId')
           .anyOf(characterModuleIds)
           .delete()
@@ -318,6 +324,378 @@ export async function startSession(
   )
 }
 
+export interface CampfireQuickNote {
+  shareId: string
+  text: string
+  capturedAt: string
+}
+
+export interface CampfireSession {
+  sessionNumber: number
+  title: string
+  startedAt: string
+  endedAt?: string
+  quickNotes: CampfireQuickNote[]
+}
+
+export interface CampfirePackage {
+  type: 'campaign-guide-campfire'
+  version: 1
+  senderName: string
+  exportedAt: string
+  sessions: CampfireSession[]
+}
+
+export async function exportCampfirePackage(
+  campaignId: string,
+  sessionIds: string[]
+): Promise<CampfirePackage> {
+  const character =
+    await db.characters
+      .where('campaignId')
+      .equals(campaignId)
+      .first()
+
+  const sessions =
+    await db.sessions.bulkGet(sessionIds)
+
+  const validSessions =
+    sessions.filter(
+      (
+        session
+      ): session is NonNullable<
+        typeof session
+      > =>
+        Boolean(
+          session &&
+            session.campaignId ===
+              campaignId &&
+            session.status !== 'active'
+        )
+    )
+
+  const campfireSessions =
+    await Promise.all(
+      validSessions.map(
+        async (session) => {
+          const quickNotes =
+            (
+              await getQuickNotesForSession(
+                session.id
+              )
+            ).filter(
+              (quickNote) =>
+                !quickNote.receivedViaCampfire
+            )
+
+          return {
+            sessionNumber:
+              session.sessionNumber,
+            title: session.title,
+            startedAt: session.startedAt,
+            endedAt: session.endedAt,
+            quickNotes: quickNotes.map(
+              (quickNote) => ({
+                shareId:
+                  quickNote.shareId ??
+                  quickNote.id,
+                text: quickNote.text,
+                capturedAt:
+                  quickNote.capturedAt,
+              })
+            ),
+          }
+        }
+      )
+    )
+
+  return {
+    type: 'campaign-guide-campfire',
+    version: 1,
+    senderName:
+      character?.name?.trim() ||
+      'Unknown adventurer',
+    exportedAt:
+      new Date().toISOString(),
+    sessions: campfireSessions,
+  }
+}
+
+export async function downloadCampfirePackage(
+  campaignId: string,
+  sessionIds: string[]
+) {
+  const campfirePackage =
+    await exportCampfirePackage(
+      campaignId,
+      sessionIds
+    )
+
+  if (campfirePackage.sessions.length === 0) {
+    throw new Error(
+      'Select at least one ended Session to share.'
+    )
+  }
+
+  const blob = new Blob(
+    [
+      JSON.stringify(
+        campfirePackage,
+        null,
+        2
+      ),
+    ],
+    {
+      type: 'application/json',
+    }
+  )
+
+  const url =
+    URL.createObjectURL(blob)
+
+  const link =
+    document.createElement('a')
+
+  link.href = url
+  link.download =
+    `campfire-${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`
+
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+
+  URL.revokeObjectURL(url)
+}
+
+export async function parseCampfireFile(
+  file: File
+): Promise<CampfirePackage> {
+  let parsed: unknown
+
+  try {
+    const text = await file.text()
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error(
+      'The selected file is not valid JSON.'
+    )
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== 'object'
+  ) {
+    throw new Error(
+      'This is not a valid Campfire file.'
+    )
+  }
+
+  const candidate =
+    parsed as Partial<CampfirePackage>
+
+  if (
+    candidate.type !==
+      'campaign-guide-campfire' ||
+    candidate.version !== 1 ||
+    typeof candidate.senderName !==
+      'string' ||
+    typeof candidate.exportedAt !==
+      'string' ||
+    !Array.isArray(candidate.sessions)
+  ) {
+    throw new Error(
+      'This is not a valid Campfire file.'
+    )
+  }
+
+  for (const session of candidate.sessions) {
+    if (
+      !session ||
+      typeof session !== 'object' ||
+      typeof session.sessionNumber !==
+        'number' ||
+      typeof session.title !== 'string' ||
+      typeof session.startedAt !==
+        'string' ||
+      (
+        session.endedAt !== undefined &&
+        typeof session.endedAt !==
+          'string'
+      ) ||
+      !Array.isArray(session.quickNotes)
+    ) {
+      throw new Error(
+        'This Campfire file contains invalid Session data.'
+      )
+    }
+
+    for (
+      const quickNote
+      of session.quickNotes
+    ) {
+      if (
+        !quickNote ||
+        typeof quickNote !== 'object' ||
+        typeof quickNote.shareId !==
+          'string' ||
+        typeof quickNote.text !==
+          'string' ||
+        typeof quickNote.capturedAt !==
+          'string'
+      ) {
+        throw new Error(
+          'This Campfire file contains invalid Quick Note data.'
+        )
+      }
+    }
+  }
+
+  return candidate as CampfirePackage
+}
+
+export async function importCampfireSession(
+  campaignId: string,
+  localSessionId: string,
+  incomingSession: CampfireSession
+) {
+  const session =
+    await db.sessions.get(
+      localSessionId
+    )
+
+  if (
+    !session ||
+    session.campaignId !== campaignId
+  ) {
+    throw new Error(
+      'The selected local Session was not found.'
+    )
+  }
+
+  if (session.status === 'active') {
+    throw new Error(
+      'Campfire notes cannot be imported into an active Session.'
+    )
+  }
+
+  const existingQuickNotes =
+    await db.quickNotes
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray()
+
+  const existingShareIds =
+    new Set(
+      existingQuickNotes.map(
+        (quickNote) =>
+          quickNote.shareId
+      )
+    )
+
+  const newQuickNotes =
+    incomingSession.quickNotes
+      .filter(
+        (quickNote) =>
+          !existingShareIds.has(
+            quickNote.shareId
+          )
+      )
+      .map((quickNote) => {
+        const timestamp =
+          new Date().toISOString()
+
+        return {
+          id: createId(),
+          campaignId,
+          sessionId: localSessionId,
+          shareId: quickNote.shareId,
+          receivedViaCampfire: true,
+          text: quickNote.text,
+          capturedAt:
+            quickNote.capturedAt,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }
+      })
+
+  if (newQuickNotes.length > 0) {
+    await db.quickNotes.bulkAdd(
+      newQuickNotes
+    )
+
+    if (
+      session.status === 'reviewing' ||
+      session.status === 'completed'
+    ) {
+      await startOrResumeReview(
+        session.id
+      )
+    }
+  }
+
+  return {
+    importedCount:
+      newQuickNotes.length,
+    duplicateCount:
+      incomingSession.quickNotes.length -
+      newQuickNotes.length,
+  }
+}
+
+export async function importCampfirePackage(
+  campaignId: string,
+  campfirePackage: CampfirePackage,
+  mappings: CampfireSessionMapping[]
+) {
+  let importedCount = 0
+  let duplicateCount = 0
+  let skippedSessionCount = 0
+
+  for (const mapping of mappings) {
+    const incomingSession =
+      campfirePackage.sessions[
+        mapping.incomingSessionIndex
+      ]
+
+    if (!incomingSession) {
+      throw new Error(
+        'A Campfire Session mapping is invalid.'
+      )
+    }
+
+    if (!mapping.localSessionId) {
+      skippedSessionCount += 1
+      continue
+    }
+
+    const result =
+      await importCampfireSession(
+        campaignId,
+        mapping.localSessionId,
+        incomingSession
+      )
+
+    importedCount +=
+      result.importedCount
+
+    duplicateCount +=
+      result.duplicateCount
+  }
+
+  return {
+    importedCount,
+    duplicateCount,
+    skippedSessionCount,
+  }
+}
+
+export interface CampfireSessionMapping {
+  incomingSessionIndex: number
+  localSessionId?: string
+}
+
 export async function createQuickNote(
   campaignId: string,
   sessionId: string,
@@ -334,10 +712,14 @@ export async function createQuickNote(
   const timestamp =
     new Date().toISOString()
 
+  const id = createId()
+
   const quickNote = {
-    id: createId(),
+    id,
     campaignId,
     sessionId,
+    shareId: id,
+    receivedViaCampfire: false,
     text: trimmedText,
     capturedAt: timestamp,
     createdAt: timestamp,
@@ -356,6 +738,60 @@ export async function getQuickNotesForSession(
     .where('sessionId')
     .equals(sessionId)
     .sortBy('capturedAt')
+}
+
+export async function updateQuickNote(
+  quickNoteId: string,
+  text: string
+) {
+  const trimmedText = text.trim()
+
+  if (!trimmedText) {
+    throw new Error(
+      'Quick Note text is required.'
+    )
+  }
+
+  const quickNote =
+    await db.quickNotes.get(
+      quickNoteId
+    )
+
+  if (!quickNote) {
+    throw new Error(
+      'Quick Note not found.'
+    )
+  }
+
+  await db.quickNotes.update(
+    quickNoteId,
+    {
+      text: trimmedText,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.quickNotes.get(
+    quickNoteId
+  )
+}
+
+export async function deleteQuickNote(
+  quickNoteId: string
+) {
+  const quickNote =
+    await db.quickNotes.get(
+      quickNoteId
+    )
+
+  if (!quickNote) {
+    return
+  }
+
+  await db.quickNotes.delete(
+    quickNoteId
+  )
 }
 
 export async function endSession(
@@ -412,6 +848,74 @@ export async function getOpenReviews(
   )
 }
 
+export async function getOpenReviewCampfireSessionIds(
+  campaignId: string
+): Promise<string[]> {
+  const openReviews =
+    await getOpenReviews(campaignId)
+
+  const campfireSessionIds =
+    await Promise.all(
+      openReviews.map(
+        async (session) => {
+          const quickNotes =
+            await getQuickNotesForSession(
+              session.id
+            )
+
+          const reviewDraft =
+            await db.reviewDrafts
+              .where('sessionId')
+              .equals(session.id)
+              .first()
+
+          if (!reviewDraft) {
+            return quickNotes.some(
+              (quickNote) =>
+                quickNote.receivedViaCampfire
+            )
+              ? session.id
+              : undefined
+          }
+
+          const reviewItems =
+            await db.reviewItems
+              .where('reviewDraftId')
+              .equals(reviewDraft.id)
+              .toArray()
+
+          const pendingQuickNoteIds =
+            new Set(
+              reviewItems
+                .filter(
+                  (reviewItem) =>
+                    !reviewItem.committedAt
+                )
+                .map(
+                  (reviewItem) =>
+                    reviewItem.quickNoteId
+                )
+            )
+
+          return quickNotes.some(
+            (quickNote) =>
+              quickNote.receivedViaCampfire &&
+              pendingQuickNoteIds.has(
+                quickNote.id
+              )
+          )
+            ? session.id
+            : undefined
+        }
+      )
+    )
+
+  return campfireSessionIds.filter(
+    (sessionId): sessionId is string =>
+      Boolean(sessionId)
+  )
+}
+
 export async function getReviewDraftForSession(
   sessionId: string
 ) {
@@ -465,6 +969,18 @@ export async function getReviewItems(
   )
 }
 
+export async function getUncommittedReviewItems(
+  reviewDraftId: string
+) {
+  const reviewItems =
+    await getReviewItems(reviewDraftId)
+
+  return reviewItems.filter(
+    (reviewItem) =>
+      !reviewItem.committedAt
+  )
+}
+
 export async function startOrResumeReview(
   sessionId: string
 ) {
@@ -487,10 +1003,11 @@ export async function startOrResumeReview(
       if (
         session.status !==
           'awaiting_review' &&
-        session.status !== 'reviewing'
+        session.status !== 'reviewing' &&
+        session.status !== 'completed'
       ) {
         throw new Error(
-          'Only an open review can be started or resumed.'
+          'Only an ended Session can be reviewed.'
         )
       }
 
@@ -570,8 +1087,109 @@ export async function startOrResumeReview(
         )
       }
 
+      const quickNotes =
+        await getQuickNotesForSession(
+          session.id
+        )
+
+      const existingReviewItems =
+        await db.reviewItems
+          .where('reviewDraftId')
+          .equals(reviewDraft.id)
+          .toArray()
+
+      const representedQuickNoteIds =
+        new Set(
+          existingReviewItems.map(
+            (item) => item.quickNoteId
+          )
+        )
+
+      const missingQuickNotes =
+        quickNotes.filter(
+          (quickNote) =>
+            !representedQuickNoteIds.has(
+              quickNote.id
+            )
+        )
+
+      if (
+        session.status === 'completed' &&
+        missingQuickNotes.length === 0
+      ) {
+        throw new Error(
+          'This completed Session has no new Quick Notes to review.'
+        )
+      }
+
+      if (missingQuickNotes.length > 0) {
+        const timestamp =
+          new Date().toISOString()
+
+        const newReviewItems =
+          missingQuickNotes.map(
+            (quickNote) => ({
+              id: createId(),
+              reviewDraftId:
+                reviewDraft.id,
+              quickNoteId:
+                quickNote.id,
+              workingText:
+                quickNote.text,
+              isDiscarded: false,
+              committedAt: undefined,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            })
+          )
+
+        await db.reviewItems.bulkAdd(
+          newReviewItems
+        )
+
+        if (
+          !reviewDraft.currentReviewItemId
+        ) {
+          reviewDraft.currentReviewItemId =
+            newReviewItems[0].id
+
+          await db.reviewDrafts.update(
+            reviewDraft.id,
+            {
+              currentReviewItemId:
+                newReviewItems[0].id,
+              updatedAt: timestamp,
+            }
+          )
+        }
+
+        if (session.status === 'completed') {
+          reviewDraft.status = 'in_progress'
+          reviewDraft.currentReviewItemId =
+            newReviewItems[0].id
+
+          await db.reviewDrafts.update(
+            reviewDraft.id,
+            {
+              status: 'in_progress',
+              currentReviewItemId:
+                newReviewItems[0].id,
+              updatedAt: timestamp,
+            }
+          )
+
+          await db.sessions.update(
+            session.id,
+            {
+              status: 'reviewing',
+              updatedAt: timestamp,
+            }
+          )
+        }
+      }
+
       const reviewItems =
-        await getReviewItems(
+        await getUncommittedReviewItems(
           reviewDraft.id
         )
 
@@ -2997,10 +3615,9 @@ export async function getReviewResolutionSummary(
   reviewDraftId: string
 ) {
   const reviewItems =
-    await db.reviewItems
-      .where('reviewDraftId')
-      .equals(reviewDraftId)
-      .toArray()
+    await getUncommittedReviewItems(
+      reviewDraftId
+    )
 
   const reviewItemIds =
     new Set(
@@ -3063,7 +3680,9 @@ export async function getReviewSummaryData(
   reviewDraftId: string
 ) {
     const reviewItems =
-      await getReviewItems(reviewDraftId)
+      await getUncommittedReviewItems(
+        reviewDraftId
+      )
 
   const quickNoteIds =
     reviewItems.map(
@@ -3170,10 +3789,21 @@ export async function completeReview(
         )
       }
 
-      const reviewItems =
+      const allReviewItems =
         await getReviewItems(
           reviewDraft.id
         )
+
+      const reviewItems =
+        allReviewItems.filter(
+          (item) => !item.committedAt
+        )
+
+      if (reviewItems.length === 0) {
+        throw new Error(
+          'No uncommitted Review Items remain.'
+        )
+      }
 
       const reviewItemIds =
         reviewItems.map(
@@ -3412,6 +4042,19 @@ export async function completeReview(
       const journalText =
         journalTexts.join('\n\n')
 
+      const existingJournalText =
+        session.journalText.trim()
+
+      const newJournalText =
+        journalText.trim()
+
+      const combinedJournalText = [
+        existingJournalText,
+        newJournalText,
+      ]
+        .filter(Boolean)
+        .join('\n\n')
+
       for (
         const destination
         of committedDestinations
@@ -3527,12 +4170,23 @@ export async function completeReview(
         session.id,
         {
           status: 'completed',
-          journalText,
+          journalText: combinedJournalText,
           reviewCompletedAt:
             timestamp,
           updatedAt: timestamp,
         }
       )
+
+      if (reviewItemIds.length > 0) {
+        await db.reviewItems
+          .where('id')
+          .anyOf(reviewItemIds)
+          .modify((reviewItem) => {
+            reviewItem.committedAt =
+              reviewItem.committedAt ??
+              timestamp
+          })
+      }
 
       await db.reviewDrafts.update(
         reviewDraft.id,
@@ -3704,6 +4358,27 @@ export async function getCompletedSessions(
       a.sessionNumber
   )
 }
+
+export async function getCampfireShareableSessions(
+  campaignId: string
+) {
+  const sessions =
+    await db.sessions
+      .where('campaignId')
+      .equals(campaignId)
+      .filter(
+        (session) =>
+          session.status !== 'active'
+      )
+      .toArray()
+
+  return sessions.sort(
+    (a, b) =>
+      b.sessionNumber -
+      a.sessionNumber
+  )
+}
+
 /*
  * CHARACTER
  */
@@ -3987,10 +4662,134 @@ export async function deleteEquipmentItem(
 }
 
 /*
- * FERRET MODULE
+ * CHARACTER MODULES
  */
 
-export async function getFerretModule(
+export async function getCharacterModules(
+  campaignId: string
+) {
+  const modules =
+    await db.characterModules
+      .where('campaignId')
+      .equals(campaignId)
+      .toArray()
+
+  return modules.sort(
+    (a, b) =>
+      a.sortPosition -
+      b.sortPosition
+  )
+}
+
+export async function createCharacterModule(
+  campaignId: string,
+  characterId: string,
+  moduleType:
+    import('./database').CharacterModuleType,
+  title: string
+) {
+  const character =
+    await db.characters.get(characterId)
+
+  if (!character) {
+    throw new Error(
+      'Character not found.'
+    )
+  }
+
+  if (
+    character.campaignId !== campaignId
+  ) {
+    throw new Error(
+      'Character does not belong to this campaign.'
+    )
+  }
+
+  const existingModule =
+    await db.characterModules
+      .where('characterId')
+      .equals(characterId)
+      .filter(
+        (module) =>
+          module.moduleType === moduleType
+      )
+      .first()
+
+  if (existingModule) {
+    return existingModule
+  }
+
+  const existingModules =
+    await getCharacterModules(campaignId)
+
+  const highestSortPosition =
+    existingModules.reduce(
+      (highest, module) =>
+        Math.max(
+          highest,
+          module.sortPosition
+        ),
+      -1
+    )
+
+  const timestamp =
+    new Date().toISOString()
+
+  const module = {
+    id: createId(),
+    campaignId,
+    characterId,
+    moduleType,
+    title,
+    sortPosition:
+      highestSortPosition + 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+
+  await db.characterModules.add(module)
+
+  return module
+}
+
+export async function deleteCharacterModule(
+  characterModuleId: string
+) {
+  const module =
+    await db.characterModules.get(
+      characterModuleId
+    )
+
+  if (!module) {
+    return
+  }
+
+  if (module.moduleType === 'companion') {
+    await deleteCompanionModule(
+      characterModuleId
+    )
+
+    return
+  }
+
+  if (module.moduleType === 'weather') {
+    await deleteWeatherModule(
+      characterModuleId
+    )
+
+    return
+  }
+
+  throw new Error(
+    `Unsupported character module type: ${module.moduleType}`
+  )
+}
+
+/*
+ * COMPANION MODULE
+ */
+
+export async function getCompanionModule(
   characterId: string
 ) {
   return db.characterModules
@@ -3998,17 +4797,17 @@ export async function getFerretModule(
     .equals(characterId)
     .filter(
       (module) =>
-        module.moduleType === 'ferret'
+        module.moduleType === 'companion'
     )
     .first()
 }
 
-export async function createFerretModule(
+export async function createCompanionModule(
   campaignId: string,
   characterId: string
 ) {
   const existingModule =
-    await getFerretModule(characterId)
+    await getCompanionModule(characterId)
 
   if (existingModule) {
     return existingModule
@@ -4034,14 +4833,28 @@ export async function createFerretModule(
   const timestamp =
     new Date().toISOString()
 
+  const existingModules =
+    await getCharacterModules(campaignId)
+
+  const highestSortPosition =
+    existingModules.reduce(
+      (highest, module) =>
+        Math.max(
+          highest,
+          module.sortPosition
+        ),
+      -1
+    )
+
   const module = {
     id: createId(),
     campaignId,
     characterId,
 
-    moduleType: 'ferret' as const,
-    title: 'Ferret',
-    sortPosition: 0,
+    moduleType: 'companion' as const,
+    title: 'Companion',
+    sortPosition:
+      highestSortPosition + 1,
 
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -4063,14 +4876,14 @@ export async function createFerretModule(
     'rw',
     [
       db.characterModules,
-      db.ferretModuleData,
+      db.companionModuleData,
     ],
     async () => {
       await db.characterModules.add(
         module
       )
 
-      await db.ferretModuleData.add(
+      await db.companionModuleData.add(
         moduleData
       )
     }
@@ -4079,37 +4892,37 @@ export async function createFerretModule(
   return module
 }
 
-export async function getFerretModuleData(
+export async function getCompanionModuleData(
   characterModuleId: string
 ) {
-  return db.ferretModuleData.get(
+  return db.companionModuleData.get(
     characterModuleId
   )
 }
 
-export async function updateFerretModuleData(
+export async function updateCompanionModuleData(
   characterModuleId: string,
   changes: {
     name?: string
     description?: string
     relationship?:
-      import('./database').FerretRelationship
+      import('./database').CompanionRelationship
     hunger?:
-      import('./database').FerretHunger
+      import('./database').CompanionHunger
   }
 ) {
   const moduleData =
-    await db.ferretModuleData.get(
+    await db.companionModuleData.get(
       characterModuleId
     )
 
   if (!moduleData) {
     throw new Error(
-      'Ferret module data not found.'
+      'Companion module data not found.'
     )
   }
 
-  await db.ferretModuleData.update(
+  await db.companionModuleData.update(
     characterModuleId,
     {
       ...changes,
@@ -4118,16 +4931,16 @@ export async function updateFerretModuleData(
     }
   )
 
-  return db.ferretModuleData.get(
+  return db.companionModuleData.get(
     characterModuleId
   )
 }
 
-export async function getFerretAbilities(
+export async function getCompanionAbilities(
   characterModuleId: string
 ) {
   const abilities =
-    await db.ferretAbilities
+    await db.companionAbilities
       .where('characterModuleId')
       .equals(characterModuleId)
       .toArray()
@@ -4139,7 +4952,7 @@ export async function getFerretAbilities(
   )
 }
 
-export async function addFerretAbility(
+export async function addCompanionAbility(
   characterModuleId: string
 ) {
   const module =
@@ -4154,7 +4967,7 @@ export async function addFerretAbility(
   }
 
   const existingAbilities =
-    await getFerretAbilities(
+    await getCompanionAbilities(
       characterModuleId
     )
 
@@ -4174,14 +4987,14 @@ export async function addFerretAbility(
     updatedAt: timestamp,
   }
 
-  await db.ferretAbilities.add(
+  await db.companionAbilities.add(
     ability
   )
 
   return ability
 }
 
-export async function updateFerretAbility(
+export async function updateCompanionAbility(
   abilityId: string,
   changes: {
     name?: string
@@ -4190,17 +5003,17 @@ export async function updateFerretAbility(
   }
 ) {
   const ability =
-    await db.ferretAbilities.get(
+    await db.companionAbilities.get(
       abilityId
     )
 
   if (!ability) {
     throw new Error(
-      'Ferret ability not found.'
+      'Companion ability not found.'
     )
   }
 
-  await db.ferretAbilities.update(
+  await db.companionAbilities.update(
     abilityId,
     {
       ...changes,
@@ -4209,36 +5022,154 @@ export async function updateFerretAbility(
     }
   )
 
-  return db.ferretAbilities.get(
+  return db.companionAbilities.get(
     abilityId
   )
 }
 
-export async function deleteFerretAbility(
+export async function deleteCompanionAbility(
   abilityId: string
 ) {
-  await db.ferretAbilities.delete(
+  await db.companionAbilities.delete(
     abilityId
   )
 }
 
-export async function deleteFerretModule(
+export async function deleteCompanionModule(
   characterModuleId: string
 ) {
   return db.transaction(
     'rw',
     [
       db.characterModules,
-      db.ferretModuleData,
-      db.ferretAbilities,
+      db.companionModuleData,
+      db.companionAbilities,
     ],
     async () => {
-      await db.ferretAbilities
+      await db.companionAbilities
         .where('characterModuleId')
         .equals(characterModuleId)
         .delete()
 
-      await db.ferretModuleData.delete(
+      await db.companionModuleData.delete(
+        characterModuleId
+      )
+
+      await db.characterModules.delete(
+        characterModuleId
+      )
+    }
+  )
+}
+
+/*
+ * WEATHER MODULE
+ */
+
+export async function getWeatherModule(
+  characterId: string
+) {
+  return db.characterModules
+    .where('characterId')
+    .equals(characterId)
+    .filter(
+      (module) =>
+        module.moduleType === 'weather'
+    )
+    .first()
+}
+
+export async function getOrCreateWeatherModuleData(
+  characterModuleId: string
+) {
+  const module =
+    await db.characterModules.get(
+      characterModuleId
+    )
+
+  if (!module) {
+    throw new Error(
+      'Character module not found.'
+    )
+  }
+
+  if (module.moduleType !== 'weather') {
+    throw new Error(
+      'Character module is not a Weather module.'
+    )
+  }
+
+  let moduleData =
+    await db.weatherModuleData.get(
+      characterModuleId
+    )
+
+  if (!moduleData) {
+    const timestamp =
+      new Date().toISOString()
+
+    moduleData = {
+      characterModuleId,
+
+      currentSeason: undefined,
+      currentHexId: undefined,
+
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+
+    await db.weatherModuleData.add(
+      moduleData
+    )
+  }
+
+  return moduleData
+}
+
+export async function updateWeatherModuleData(
+  characterModuleId: string,
+  changes: {
+    currentSeason?:
+      import('./database').WeatherSeason
+    currentHexId?: string
+  }
+) {
+  const moduleData =
+    await db.weatherModuleData.get(
+      characterModuleId
+    )
+
+  if (!moduleData) {
+    throw new Error(
+      'Weather module data not found.'
+    )
+  }
+
+  await db.weatherModuleData.update(
+    characterModuleId,
+    {
+      ...changes,
+      updatedAt:
+        new Date().toISOString(),
+    }
+  )
+
+  return db.weatherModuleData.get(
+    characterModuleId
+  )
+}
+
+export async function deleteWeatherModule(
+  characterModuleId: string
+) {
+  return db.transaction(
+    'rw',
+    [
+      db.characterModules,
+      db.weatherModuleData,
+    ],
+    async () => {
+      await db.weatherModuleData.delete(
         characterModuleId
       )
 
@@ -4294,6 +5225,7 @@ export async function addGoal(
 
     hasSetback: false,
     status: 'active' as const,
+    pinnedToToday: false,
 
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -4317,6 +5249,7 @@ export async function updateGoal(
     howToMeasure?: string
     downside?: string
     hasSetback?: boolean
+    pinnedToToday?: boolean
   }
 ) {
   const goal =
@@ -4430,6 +5363,7 @@ export async function addReminder(
     title: '',
     todaySummary: '',
     content: '',
+    pinnedToToday: false,
 
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -4448,6 +5382,7 @@ export async function updateReminder(
     title?: string
     todaySummary?: string
     content?: string
+    pinnedToToday?: boolean
   }
 ) {
   const reminder =
@@ -4583,22 +5518,28 @@ const characterModuleIds =
   )
 
 const [
-  ferretModuleData,
-  ferretAbilities,
+  companionModuleData,
+  companionAbilities,
+  weatherModuleData,
 ] =
   characterModuleIds.length > 0
     ? await Promise.all([
-        db.ferretModuleData
+        db.companionModuleData
           .where('characterModuleId')
           .anyOf(characterModuleIds)
           .toArray(),
 
-        db.ferretAbilities
+        db.companionAbilities
+          .where('characterModuleId')
+          .anyOf(characterModuleIds)
+          .toArray(),
+
+        db.weatherModuleData
           .where('characterModuleId')
           .anyOf(characterModuleIds)
           .toArray(),
       ])
-    : [[], []]
+    : [[], [], []]
 
   /*
     The remaining Review tables don't
@@ -4671,8 +5612,9 @@ const [
       characters,
       equipmentItems,
       characterModules,
-      ferretModuleData,
-      ferretAbilities,
+      companionModuleData,
+      companionAbilities,
+      weatherModuleData,
       goals,
       reminders,
       sessions,
@@ -4689,6 +5631,68 @@ const [
       noteContributions,
       entityRedirects,
     },
+  }
+}
+
+function normalizeBackupQuickNotes(
+  quickNotes: any[] | undefined
+) {
+  return (quickNotes ?? []).map(
+    (quickNote) => ({
+      ...quickNote,
+
+      shareId:
+        quickNote.shareId ??
+        quickNote.id,
+
+      receivedViaCampfire:
+        quickNote.receivedViaCampfire ??
+        false,
+    })
+  )
+}
+
+function normalizeBackupModuleData(
+  data: any
+) {
+  const characterModules =
+    (data.characterModules ?? []).map(
+      (module: any) => {
+        if (
+          module.moduleType !== 'ferret'
+        ) {
+          return module
+        }
+
+        return {
+          ...module,
+          moduleType: 'companion',
+          title:
+            module.title === 'Ferret'
+              ? 'Companion'
+              : module.title,
+        }
+      }
+    )
+
+  const companionModuleData =
+    data.companionModuleData ??
+    data.ferretModuleData ??
+    []
+
+  const companionAbilities =
+    data.companionAbilities ??
+    data.ferretAbilities ??
+    []
+
+  const weatherModuleData =
+    data.weatherModuleData ?? []
+
+  return {
+    characterModules,
+    companionModuleData,
+    companionAbilities,
+    weatherModuleData,
   }
 }
 
@@ -4742,6 +5746,14 @@ export async function importCampaign(
 
   const data = backup.data
 
+  const normalizedQuickNotes =
+    normalizeBackupQuickNotes(
+      data.quickNotes
+    )
+
+  const normalizedModuleData =
+    normalizeBackupModuleData(data)
+
   await db.transaction(
     'rw',
     [
@@ -4749,8 +5761,9 @@ export async function importCampaign(
       db.characters,
       db.equipmentItems,
       db.characterModules,
-      db.ferretModuleData,
-      db.ferretAbilities,
+      db.companionModuleData,
+      db.companionAbilities,
+      db.weatherModuleData,
       db.goals,
       db.reminders,
       db.sessions,
@@ -4784,21 +5797,42 @@ export async function importCampaign(
         )
       }
 
-      if (data.characterModules?.length) {
+      if (
+        normalizedModuleData
+          .characterModules.length
+      ) {
         await db.characterModules.bulkAdd(
-          data.characterModules
+          normalizedModuleData.characterModules
         )
       }
 
-      if (data.ferretModuleData?.length) {
-        await db.ferretModuleData.bulkAdd(
-          data.ferretModuleData
+      if (
+        normalizedModuleData
+          .companionModuleData.length
+      ) {
+        await db.companionModuleData.bulkAdd(
+          normalizedModuleData
+            .companionModuleData
         )
       }
 
-      if (data.ferretAbilities?.length) {
-        await db.ferretAbilities.bulkAdd(
-          data.ferretAbilities
+      if (
+        normalizedModuleData
+          .companionAbilities.length
+      ) {
+        await db.companionAbilities.bulkAdd(
+          normalizedModuleData
+            .companionAbilities
+        )
+      }
+
+      if (
+        normalizedModuleData
+          .weatherModuleData.length
+      ) {
+        await db.weatherModuleData.bulkAdd(
+          normalizedModuleData
+            .weatherModuleData
         )
       }
 
@@ -4820,9 +5854,9 @@ export async function importCampaign(
         )
       }
 
-      if (data.quickNotes?.length) {
+      if (normalizedQuickNotes.length) {
         await db.quickNotes.bulkAdd(
-          data.quickNotes
+          normalizedQuickNotes
         )
       }
 
@@ -4973,6 +6007,14 @@ export async function replaceCampaignFromBackup(
 
   const data = backup.data
 
+  const normalizedQuickNotes =
+    normalizeBackupQuickNotes(
+      data.quickNotes
+    )
+
+  const normalizedModuleData =
+    normalizeBackupModuleData(data)
+
   await db.transaction(
     'rw',
     [
@@ -4980,8 +6022,9 @@ export async function replaceCampaignFromBackup(
       db.characters,
       db.equipmentItems,
       db.characterModules,
-      db.ferretModuleData,
-      db.ferretAbilities,
+      db.companionModuleData,
+      db.companionAbilities,
+      db.weatherModuleData,
       db.goals,
       db.reminders,
       db.sessions,
@@ -5121,12 +6164,17 @@ export async function replaceCampaignFromBackup(
         )
 
       if (existingCharacterModuleIds.length > 0) {
-        await db.ferretAbilities
+        await db.companionAbilities
           .where('characterModuleId')
           .anyOf(existingCharacterModuleIds)
           .delete()
 
-        await db.ferretModuleData
+        await db.companionModuleData
+          .where('characterModuleId')
+          .anyOf(existingCharacterModuleIds)
+          .delete()
+
+        await db.weatherModuleData
           .where('characterModuleId')
           .anyOf(existingCharacterModuleIds)
           .delete()
@@ -5169,21 +6217,42 @@ export async function replaceCampaignFromBackup(
         )
       }
 
-      if (data.characterModules?.length) {
+      if (
+        normalizedModuleData
+          .characterModules.length
+      ) {
         await db.characterModules.bulkAdd(
-          data.characterModules
+          normalizedModuleData.characterModules
         )
       }
 
-      if (data.ferretModuleData?.length) {
-        await db.ferretModuleData.bulkAdd(
-          data.ferretModuleData
+      if (
+        normalizedModuleData
+          .companionModuleData.length
+      ) {
+        await db.companionModuleData.bulkAdd(
+          normalizedModuleData
+            .companionModuleData
         )
       }
 
-      if (data.ferretAbilities?.length) {
-        await db.ferretAbilities.bulkAdd(
-          data.ferretAbilities
+      if (
+        normalizedModuleData
+          .companionAbilities.length
+      ) {
+        await db.companionAbilities.bulkAdd(
+          normalizedModuleData
+            .companionAbilities
+        )
+      }
+
+      if (
+        normalizedModuleData
+          .weatherModuleData.length
+      ) {
+        await db.weatherModuleData.bulkAdd(
+          normalizedModuleData
+            .weatherModuleData
         )
       }
 
@@ -5205,9 +6274,9 @@ export async function replaceCampaignFromBackup(
         )
       }
 
-      if (data.quickNotes?.length) {
+      if (normalizedQuickNotes.length) {
         await db.quickNotes.bulkAdd(
-          data.quickNotes
+          normalizedQuickNotes
         )
       }
 

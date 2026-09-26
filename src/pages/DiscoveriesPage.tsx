@@ -30,12 +30,14 @@ import type {
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
 
+
 import {
   SaveStatus,
   type SaveStatusState,
 } from '../components/SaveStatus'
 
 import GuideHelpButton from '../components/GuideHelpButton'
+import ConfirmModal from '../components/ConfirmModal'
 
 export default function DiscoveriesPage({
   campaign,
@@ -60,6 +62,16 @@ export default function DiscoveriesPage({
     selectedDiscoveryId,
     setSelectedDiscoveryId,
   ] = useState<string | undefined>()
+
+  const [
+    discoveryPendingDeletion,
+    setDiscoveryPendingDeletion,
+  ] = useState<Discovery | null>(null)
+
+  const [
+    isDeletingDiscovery,
+    setIsDeletingDiscovery,
+  ] = useState(false)
 
   const [
     relatedSessions,
@@ -690,6 +702,7 @@ const groupedDiscoveries =
                           category.id ? (
                             <div className="discovery-category-rename">
                               <input
+                                className="discovery-category-rename-input"
                                 value={categoryNameDraft}
                                 onChange={(event) =>
                                   setCategoryNameDraft(
@@ -714,6 +727,7 @@ const groupedDiscoveries =
 
                               <button
                                 type="button"
+                                className="primary-button compact-button discovery-category-rename-save"
                                 onClick={() =>
                                   void saveCategoryName()
                                 }
@@ -723,6 +737,7 @@ const groupedDiscoveries =
 
                               <button
                                 type="button"
+                                className="secondary-button compact-button"
                                 onClick={
                                   cancelRenamingCategory
                                 }
@@ -899,6 +914,7 @@ const groupedDiscoveries =
                         Category
 
                         <select
+                          className="record-select"
                           value={deleteCategoryId}
                           onChange={(event) => {
                             const categoryId =
@@ -1061,33 +1077,11 @@ const groupedDiscoveries =
               <button
                 type="button"
                 className="destructive-button discovery-delete-button"
-                onClick={() => {
-                  const confirmed =
-                    window.confirm(
-                      `Delete ${selectedDiscovery.title}?`
-                    )
-
-                  if (!confirmed) {
-                    return
-                  }
-
-                  void deleteDiscovery(
-                    selectedDiscovery.id
-                  ).then(() => {
-                    setDiscoveries(
-                      (current) =>
-                        current.filter(
-                          (discovery) =>
-                            discovery.id !==
-                            selectedDiscovery.id
-                        )
-                    )
-
-                    setSelectedDiscoveryId(
-                      undefined
-                    )
-                  })
-                }}
+                onClick={() =>
+                  setDiscoveryPendingDeletion(
+                    selectedDiscovery
+                  )
+                }
               >
                 Delete Discovery
               </button>
@@ -1100,6 +1094,7 @@ const groupedDiscoveries =
                 </span>
 
                 <select
+                  className="record-select"
                   value={
                     selectedDiscovery.categoryId
                   }
@@ -1148,6 +1143,7 @@ const groupedDiscoveries =
 
                   <div className="discovery-merge-controls">
                     <select
+                      className="record-select"
                       value={mergeTargetId}
                       onChange={(event) =>
                         setMergeTargetId(
@@ -1476,8 +1472,64 @@ const groupedDiscoveries =
           <div className="page-section">
             <p className="empty-message">No Discovery selected</p>
           </div>
-        )}
+                )}
       </section>
+
+      {discoveryPendingDeletion && (
+        <ConfirmModal
+          title="Delete Discovery?"
+          message={`Delete "${discoveryPendingDeletion.title}"? This cannot be undone.`}
+          confirmLabel="Delete Discovery"
+          isConfirming={isDeletingDiscovery}
+          onCancel={() =>
+            setDiscoveryPendingDeletion(null)
+          }
+          onConfirm={() => {
+            if (isDeletingDiscovery) {
+              return
+            }
+
+            void (async () => {
+              try {
+                setIsDeletingDiscovery(true)
+
+                await deleteDiscovery(
+                  discoveryPendingDeletion.id
+                )
+
+                setDiscoveries(
+                  (current) =>
+                    current.filter(
+                      (discovery) =>
+                        discovery.id !==
+                        discoveryPendingDeletion.id
+                    )
+                )
+
+                if (
+                  selectedDiscoveryId ===
+                  discoveryPendingDeletion.id
+                ) {
+                  setSelectedDiscoveryId(
+                    undefined
+                  )
+                }
+
+                setDiscoveryPendingDeletion(
+                  null
+                )
+              } catch (error) {
+                console.error(
+                  'Could not delete Discovery.',
+                  error
+                )
+              } finally {
+                setIsDeletingDiscovery(false)
+              }
+            })()
+          }}
+        />
+      )}
     </>
   )
 }

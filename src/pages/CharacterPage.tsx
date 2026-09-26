@@ -20,6 +20,7 @@ import type {
 
 import { SaveStatus } from '../components/SaveStatus'
 import GuideHelpButton from '../components/GuideHelpButton'
+import ConfirmModal from '../components/ConfirmModal'
 
 type AttributeKey =
   | 'strength'
@@ -125,6 +126,11 @@ export default function CharacterPage({
       equipmentItems,
       setEquipmentItems,
     ] = useState<EquipmentItem[]>([])
+
+  const [
+    isDeleteEquipmentOpen,
+    setIsDeleteEquipmentOpen,
+  ] = useState(false)
 
   const [
     selectedGearIndex,
@@ -362,27 +368,62 @@ export default function CharacterPage({
       return
     }
 
-    const confirmed = window.confirm(
-      `Remove "${selectedEquipmentItem.name}"?`
-    )
-
-    if (!confirmed) {
-      return
-    }
-
     try {
+      const removedSortPosition =
+        selectedEquipmentItem.sortPosition
+
       await deleteEquipmentItem(
         selectedEquipmentItem.id
       )
 
-      setEquipmentItems((current) =>
-        current.filter(
+      const itemsToShift =
+        equipmentItems.filter(
           (item) =>
             item.id !==
-            selectedEquipmentItem.id
+              selectedEquipmentItem.id &&
+            item.sortPosition >
+              removedSortPosition
+        )
+
+      await Promise.all(
+        itemsToShift.map((item) =>
+          updateEquipmentItem(
+            item.id,
+            {
+              sortPosition:
+                item.sortPosition - 1,
+            }
+          )
         )
       )
 
+      const shiftedIds =
+        new Set(
+          itemsToShift.map(
+            (item) => item.id
+          )
+        )
+
+      setEquipmentItems(
+        (current) =>
+          current
+            .filter(
+              (item) =>
+                item.id !==
+                selectedEquipmentItem.id
+            )
+            .map((item) =>
+              shiftedIds.has(item.id)
+                ? {
+                    ...item,
+                    sortPosition:
+                      item.sortPosition - 1,
+                  }
+                : item
+            )
+      )
+
+      setIsDeleteEquipmentOpen(false)
       setSelectedGearIndex(null)
     } catch (error) {
       console.error(
@@ -484,30 +525,38 @@ export default function CharacterPage({
     }
 
     try {
+      const selectedSlot =
+        gear[selectedGearIndex]
+
       const existingItem =
-        equipmentItems.find(
-          (item) =>
-            item.sortPosition ===
-            selectedGearIndex
-        )
+        selectedSlot?.item ?? null
 
       if (existingItem) {
         const updated =
           await updateEquipmentItem(
             existingItem.id,
             {
-            name,
-            type: equipmentTypeDraft,
-            quantity: equipmentQuantityDraft,
-            gearSlots: equipmentSlotsDraft,
-            costValue: equipmentCostValueDraft,
-            description: equipmentDescriptionDraft,
-            damage: equipmentDamageDraft,
-            range: equipmentRangeDraft,
-            weaponType: equipmentWeaponTypeDraft,
-            properties: equipmentPropertiesDraft,
-            armorClass: equipmentArmorClassDraft,
-          }
+              name,
+              type: equipmentTypeDraft,
+              quantity:
+                equipmentQuantityDraft,
+              gearSlots:
+                equipmentSlotsDraft,
+              costValue:
+                equipmentCostValueDraft,
+              description:
+                equipmentDescriptionDraft,
+              damage:
+                equipmentDamageDraft,
+              range:
+                equipmentRangeDraft,
+              weaponType:
+                equipmentWeaponTypeDraft,
+              properties:
+                equipmentPropertiesDraft,
+              armorClass:
+                equipmentArmorClassDraft,
+            }
           )
 
         if (updated) {
@@ -521,39 +570,96 @@ export default function CharacterPage({
           )
         }
       } else {
+        const itemsBeforeSlot =
+          gear
+            .slice(
+              0,
+              selectedGearIndex
+            )
+            .filter(
+              (slot) =>
+                slot.item &&
+                !slot.isContinuation
+            )
+
+        const sortPosition =
+          itemsBeforeSlot.length
+
+        const itemsToShift =
+          equipmentItems.filter(
+            (item) =>
+              item.sortPosition >=
+              sortPosition
+          )
+
+        await Promise.all(
+          itemsToShift.map((item) =>
+            updateEquipmentItem(
+              item.id,
+              {
+                sortPosition:
+                  item.sortPosition + 1,
+              }
+            )
+          )
+        )
+
         const created =
           await createEquipmentItem(
             campaign.id,
             character.id,
-            selectedGearIndex,
+            sortPosition,
             name
           )
 
-          const updated =
-            await updateEquipmentItem(
-              created.id,
-              {
-                type: equipmentTypeDraft,
-                quantity: equipmentQuantityDraft,
-                gearSlots: equipmentSlotsDraft,
-                costValue: equipmentCostValueDraft,
-                description: equipmentDescriptionDraft,
-                damage: equipmentDamageDraft,
-                range: equipmentRangeDraft,
-                weaponType: equipmentWeaponTypeDraft,
-                properties: equipmentPropertiesDraft,
-                armorClass: equipmentArmorClassDraft,
-              }
+        const updated =
+          await updateEquipmentItem(
+            created.id,
+            {
+              type: equipmentTypeDraft,
+              quantity:
+                equipmentQuantityDraft,
+              gearSlots:
+                equipmentSlotsDraft,
+              costValue:
+                equipmentCostValueDraft,
+              description:
+                equipmentDescriptionDraft,
+              damage:
+                equipmentDamageDraft,
+              range:
+                equipmentRangeDraft,
+              weaponType:
+                equipmentWeaponTypeDraft,
+              properties:
+                equipmentPropertiesDraft,
+              armorClass:
+                equipmentArmorClassDraft,
+            }
+          )
+
+        const shiftedIds =
+          new Set(
+            itemsToShift.map(
+              (item) => item.id
             )
+          )
 
         setEquipmentItems(
           (current) => [
-            ...current,
+            ...current.map((item) =>
+              shiftedIds.has(item.id)
+                ? {
+                    ...item,
+                    sortPosition:
+                      item.sortPosition + 1,
+                  }
+                : item
+            ),
             updated ?? created,
           ]
         )
       }
-
     } catch (error) {
       console.error(
         'Could not save equipment item.',
@@ -599,15 +705,44 @@ export default function CharacterPage({
     )
   }
 
-  const gear =
-    Array.from(
-      { length: 20 },
-      (_, index) =>
-        equipmentItems.find(
-          (item) =>
-            item.sortPosition === index
-        ) ?? null
-    )
+  const orderedEquipmentItems =
+  [...equipmentItems].sort(
+    (a, b) =>
+      a.sortPosition - b.sortPosition
+  )
+
+  const gear: {
+    item: EquipmentItem | null
+    isContinuation: boolean
+  }[] = []
+
+  for (const item of orderedEquipmentItems) {
+    gear.push({
+      item,
+      isContinuation: false,
+    })
+
+    const occupiedSlots =
+      Math.max(1, item.gearSlots)
+
+    for (
+      let slot = 1;
+      slot < occupiedSlots;
+      slot += 1
+    ) {
+      gear.push({
+        item,
+        isContinuation: true,
+      })
+    }
+  }
+
+  while (gear.length < 20) {
+    gear.push({
+      item: null,
+      isContinuation: false,
+    })
+  }
 
   const usedGearCapacity =
     equipmentItems.reduce(
@@ -618,7 +753,7 @@ export default function CharacterPage({
 
   const selectedEquipmentItem =
     selectedGearIndex !== null
-      ? gear[selectedGearIndex]
+      ? gear[selectedGearIndex]?.item ?? null
       : null
 
   return (
@@ -969,67 +1104,76 @@ export default function CharacterPage({
               <div className="gear-column">
                 {gear
                   .slice(0, 10)
-                  .map(
-                    (
-                      gearItem,
-                      index
-                    ) => {
-                      const isBeyondCapacity =
-                        character.maxGearCapacity !== null &&
-                        index >= character.maxGearCapacity
+                  .map((gearSlot, index) => {
+                    const gearItem =
+                      gearSlot.item
 
-                      const isUnavailable =
-                        isBeyondCapacity && !gearItem
+                    const isBeyondCapacity =
+                      character.maxGearCapacity !== null &&
+                      index >= character.maxGearCapacity
 
-                      return (
-                        <button
+                    const isContinuation =
+                      gearSlot.isContinuation
+
+                    return (
+                      <button
                         type="button"
-                        className={
-                          `gear-slot${
-                            isBeyondCapacity
-                              ? ' gear-slot-unavailable'
-                              : ''
-                          }`
-                        }
-                        disabled={isUnavailable}
+                        className={`gear-slot${
+                          isBeyondCapacity
+                            ? ' gear-slot-unavailable'
+                            : ''
+                        }${
+                          isContinuation
+                            ? ' gear-slot-continuation'
+                            : ''
+                        }`}
+                        disabled={isContinuation}
                         key={index}
                         onClick={() => {
                           setSelectedGearIndex(index)
+
                           setEquipmentNameDraft(
                             gearItem?.name ?? ''
                           )
+
                           setEquipmentTypeDraft(
                             gearItem?.type ?? 'gear'
                           )
+
                           setEquipmentQuantityDraft(
                             gearItem?.quantity ?? '1'
                           )
+
                           setEquipmentSlotsDraft(
                             gearItem?.gearSlots ?? 0
                           )
+
                           setEquipmentCostValueDraft(
                             gearItem?.costValue ?? ''
                           )
+
                           setEquipmentDescriptionDraft(
                             gearItem?.description ?? ''
                           )
+
                           setEquipmentDamageDraft(
                             gearItem?.damage ?? ''
                           )
+
                           setEquipmentWeaponTypeDraft(
                             gearItem?.weaponType ?? ''
                           )
+
                           setEquipmentRangeDraft(
                             gearItem?.range ?? ''
                           )
+
                           setEquipmentPropertiesDraft(
                             gearItem?.properties ?? ''
                           )
+
                           setEquipmentArmorClassDraft(
                             gearItem?.armorClass ?? ''
-                          )
-                          setEquipmentWeaponTypeDraft(
-                            gearItem?.weaponType ?? ''
                           )
                         }}
                       >
@@ -1038,97 +1182,108 @@ export default function CharacterPage({
                         </span>
 
                         <span>
-                          {gearItem?.name ?? '—'}
+                          {isContinuation
+                            ? `↳ ${gearItem?.name ?? ''}`
+                            : gearItem?.name ?? '—'}
                         </span>
                       </button>
                     )
-                  }
-                )}
+                  })}
               </div>
 
               <div className="gear-column">
                 {gear
                   .slice(10, 20)
-                  .map(
-                    (
-                      gearItem,
-                      index
-                    ) => {
-                      const gearIndex =
-                        index + 10
+                  .map((gearSlot, index) => {
+                    const gearIndex =
+                      index + 10
 
-                      const isBeyondCapacity =
-                        character.maxGearCapacity !== null &&
-                        gearIndex >= character.maxGearCapacity
+                    const gearItem =
+                      gearSlot.item
 
-                      const isUnavailable =
-                        isBeyondCapacity && !gearItem
+                    const isBeyondCapacity =
+                      character.maxGearCapacity !== null &&
+                      gearIndex >= character.maxGearCapacity
 
-                      return (
-                        <button
-                          type="button"
-                          className={
-                            `gear-slot${
-                              isBeyondCapacity
-                                ? ' gear-slot-unavailable'
-                                : ''
-                            }`
-                          }
-                          disabled={isUnavailable}
-                          key={gearIndex}
-                          onClick={() => {
-                            setSelectedGearIndex(
-                              gearIndex
-                            )
-                            setEquipmentNameDraft(
-                              gearItem?.name ?? ''
-                            )
-                            setEquipmentTypeDraft(
-                              gearItem?.type ?? 'gear'
-                            )
-                            setEquipmentQuantityDraft(
-                              gearItem?.quantity ?? '1'
-                            )
-                            setEquipmentSlotsDraft(
-                              gearItem?.gearSlots ?? 0
-                            )
-                            setEquipmentCostValueDraft(
-                              gearItem?.costValue ?? ''
-                            )
-                            setEquipmentDescriptionDraft(
-                              gearItem?.description ?? ''
-                            )
-                            setEquipmentDamageDraft(
-                              gearItem?.damage ?? ''
-                            )
-                            setEquipmentWeaponTypeDraft(
-                              gearItem?.weaponType ?? ''
-                            )
-                            setEquipmentRangeDraft(
-                              gearItem?.range ?? ''
-                            )
-                            setEquipmentPropertiesDraft(
-                              gearItem?.properties ?? ''
-                            )
-                            setEquipmentArmorClassDraft(
-                              gearItem?.armorClass ?? ''
-                            )
-                            setEquipmentWeaponTypeDraft(
-                              gearItem?.weaponType ?? ''
-                            )
-                          }}
-                        >
-                          <span>
-                            {gearIndex + 1}.
-                          </span>
+                    const isContinuation =
+                      gearSlot.isContinuation
 
-                          <span>
-                            {gearItem?.name ?? '—'}
-                          </span>
-                        </button>
-                      )
-                    }
-                  )}
+                    return (
+                      <button
+                        type="button"
+                        className={`gear-slot${
+                          isBeyondCapacity
+                            ? ' gear-slot-unavailable'
+                            : ''
+                        }${
+                          isContinuation
+                            ? ' gear-slot-continuation'
+                            : ''
+                        }`}
+                        disabled={isContinuation}
+                        key={gearIndex}
+                        onClick={() => {
+                          setSelectedGearIndex(
+                            gearIndex
+                          )
+
+                          setEquipmentNameDraft(
+                            gearItem?.name ?? ''
+                          )
+
+                          setEquipmentTypeDraft(
+                            gearItem?.type ?? 'gear'
+                          )
+
+                          setEquipmentQuantityDraft(
+                            gearItem?.quantity ?? '1'
+                          )
+
+                          setEquipmentSlotsDraft(
+                            gearItem?.gearSlots ?? 0
+                          )
+
+                          setEquipmentCostValueDraft(
+                            gearItem?.costValue ?? ''
+                          )
+
+                          setEquipmentDescriptionDraft(
+                            gearItem?.description ?? ''
+                          )
+
+                          setEquipmentDamageDraft(
+                            gearItem?.damage ?? ''
+                          )
+
+                          setEquipmentWeaponTypeDraft(
+                            gearItem?.weaponType ?? ''
+                          )
+
+                          setEquipmentRangeDraft(
+                            gearItem?.range ?? ''
+                          )
+
+                          setEquipmentPropertiesDraft(
+                            gearItem?.properties ?? ''
+                          )
+
+                          setEquipmentArmorClassDraft(
+                            gearItem?.armorClass ?? ''
+                          )
+                        }}
+                      >
+                        <span>
+                          {gearIndex + 1}.
+                        </span>
+
+                        <span>
+                          {isContinuation
+                            ? `↳ ${gearItem?.name ?? ''}`
+                            : gearItem?.name ?? '—'}
+                        </span>
+                      </button>
+                    )
+                  })}
               </div>
             </div>
           </div>
@@ -1397,7 +1552,7 @@ export default function CharacterPage({
                 </div>
               </>
             ) : null}
-<div className="equipment-detail-footer-stats">
+            <div className="equipment-detail-footer-stats">
               <label className="character-field">
                 <span>Slots</span>
 
@@ -1431,9 +1586,9 @@ export default function CharacterPage({
               <button
                 type="button"
                 className="equipment-remove-button"
-                onClick={() => {
-                  void deleteSelectedEquipmentItem()
-                }}
+                onClick={() =>
+                  setIsDeleteEquipmentOpen(true)
+                }
               >
                 Remove Item
               </button>
@@ -1441,6 +1596,20 @@ export default function CharacterPage({
           </div>
         </div>
       ) : null}
+      {isDeleteEquipmentOpen &&
+        selectedEquipmentItem ? (
+          <ConfirmModal
+            title="Remove Item?"
+            message={`Remove "${selectedEquipmentItem.name}" from your equipment?`}
+            confirmLabel="Remove Item"
+            onCancel={() =>
+              setIsDeleteEquipmentOpen(false)
+            }
+            onConfirm={() => {
+              void deleteSelectedEquipmentItem()
+            }}
+          />
+        ) : null}
     </>
   )
 }

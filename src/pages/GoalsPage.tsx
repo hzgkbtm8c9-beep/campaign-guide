@@ -22,6 +22,7 @@ import type {
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
 import { SaveStatus } from '../components/SaveStatus'
 import GuideHelpButton from '../components/GuideHelpButton'
+import ConfirmModal from '../components/ConfirmModal'
 
 const goalSections: {
   term: GoalTerm
@@ -55,6 +56,16 @@ export default function GoalsPage({
     selectedGoalId,
     setSelectedGoalId,
   ] = useState<string | undefined>()
+
+  const [
+    goalPendingDeletion,
+    setGoalPendingDeletion,
+  ] = useState<Goal | null>(null)
+
+  const [
+    isDeletingGoal,
+    setIsDeletingGoal,
+  ] = useState(false)
 
   const [
     isLoading,
@@ -221,6 +232,8 @@ export default function GoalsPage({
                   selectedGoal.downside,
                 hasSetback:
                   selectedGoal.hasSetback,
+                pinnedToToday:
+                  selectedGoal.pinnedToToday,
               }
             )
 
@@ -255,7 +268,8 @@ export default function GoalsPage({
     selectedGoal?.howToMeasure,
     selectedGoal?.downside,
     selectedGoal?.hasSetback,
-  ])
+    selectedGoal?.pinnedToToday,
+    ])
 
   async function handleComplete() {
     if (!selectedGoal) {
@@ -324,49 +338,54 @@ export default function GoalsPage({
   }
 
   async function handleDelete() {
-    if (!selectedGoal) {
+    if (
+      !goalPendingDeletion ||
+      isDeletingGoal
+    ) {
       return
     }
 
-    const confirmed =
-      window.confirm(
-        `Delete "${
-          selectedGoal.title ||
-          'Untitled Goal'
-        }"?`
-      )
-
-    if (!confirmed) {
-      return
-    }
+    const goalToDelete =
+      goalPendingDeletion
 
     try {
+      setIsDeletingGoal(true)
+
       await deleteGoal(
-        selectedGoal.id
+        goalToDelete.id
       )
 
       const remaining =
         goals.filter(
           (goal) =>
             goal.id !==
-            selectedGoal.id
+            goalToDelete.id
         )
 
       setGoals(remaining)
 
-      setSelectedGoalId(
-        remaining.find(
-          (goal) =>
-            goal.status ===
-            'active'
-        )?.id ??
-          remaining[0]?.id
-      )
+      if (
+        selectedGoalId ===
+        goalToDelete.id
+      ) {
+        setSelectedGoalId(
+          remaining.find(
+            (goal) =>
+              goal.status ===
+              'active'
+          )?.id ??
+            remaining[0]?.id
+        )
+      }
+
+      setGoalPendingDeletion(null)
     } catch (error) {
       console.error(
         'Could not delete Goal.',
         error
       )
+    } finally {
+      setIsDeletingGoal(false)
     }
   }
 
@@ -394,7 +413,7 @@ export default function GoalsPage({
             <h1 className="page-title">Goals</h1>
 
             <p className="page-intro">
-              Ambitions worth chasing, before the dungeon changes its mind.
+              Ambitions worth chasing, before the dungeon has other ideas.
             </p>
           </div>
 
@@ -540,7 +559,9 @@ export default function GoalsPage({
                 <button
                   className="destructive-button goal-delete-button"
                   onClick={() =>
-                    void handleDelete()
+                    setGoalPendingDeletion(
+                      selectedGoal
+                    )
                   }
                 >
                   Delete Goal
@@ -639,21 +660,41 @@ export default function GoalsPage({
                     </button>
                   )}
                 </div>
-                <label className="goal-setback-toggle">
-                  <input
-                    type="checkbox"
-                    checked={selectedGoal.hasSetback}
-                    onChange={(event) =>
-                      changeSelectedGoal({
-                        hasSetback: event.target.checked,
-                      })
-                    }
-                  />
+                <div className="goal-editor-toggles">
+                  <label className="goal-setback-toggle">
+                    <input
+                      type="checkbox"
+                      checked={selectedGoal.pinnedToToday}
+                      onChange={(event) =>
+                        changeSelectedGoal({
+                          pinnedToToday:
+                            event.target.checked,
+                        })
+                      }
+                    />
 
-                  <span>
-                    Setback
-                  </span>
-                </label>
+                    <span>
+                      Pin to Today
+                    </span>
+                  </label>
+
+                  <label className="goal-setback-toggle">
+                    <input
+                      type="checkbox"
+                      checked={selectedGoal.hasSetback}
+                      onChange={(event) =>
+                        changeSelectedGoal({
+                          hasSetback:
+                            event.target.checked,
+                        })
+                      }
+                    />
+
+                    <span>
+                      Setback
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
           </>
@@ -666,8 +707,26 @@ export default function GoalsPage({
               Term goal to get started.
             </p>
           </div>
-        )}
+                )}
       </section>
+
+      {goalPendingDeletion && (
+        <ConfirmModal
+          title="Delete Goal?"
+          message={`Delete "${
+            goalPendingDeletion.title ||
+            'Untitled Goal'
+          }"? This cannot be undone.`}
+          confirmLabel="Delete Goal"
+          isConfirming={isDeletingGoal}
+          onCancel={() =>
+            setGoalPendingDeletion(null)
+          }
+          onConfirm={() =>
+            void handleDelete()
+          }
+        />
+      )}
     </>
   )
 }

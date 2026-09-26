@@ -6,34 +6,42 @@ import {
 import type {
   Campaign,
   CharacterModule,
-  FerretModuleData,
-  FerretAbility,
+  CompanionModuleData,
+  CompanionAbility,
 } from '../data/database'
 
 import {
-  createFerretModule,
-  addFerretAbility,
-  getFerretAbilities,
-  getFerretModule,
-  getFerretModuleData,
+  createCompanionModule,
+  addCompanionAbility,
+  getCompanionAbilities,
+  getCompanionModule,
+  getCompanionModuleData,
   getOrCreateCharacter,
-  updateFerretAbility,
-  deleteFerretAbility,
-  updateFerretModuleData,
+  updateCompanionAbility,
+  deleteCompanionAbility,
+  updateCompanionModuleData,
 } from '../data/repository'
 
 import { WritingTextarea } from '../components/WritingTextarea'
 import GuideHelpButton from '../components/GuideHelpButton'
+import CharacterModuleActions from '../components/CharacterModuleActions'
+import ConfirmModal from '../components/ConfirmModal'
 
 import {
   SaveStatus,
   type SaveStatusState,
 } from '../components/SaveStatus'
 
-function CharacterModulePage({
+function CompanionModulePage({
   campaign,
+  module,
+  onDeleteModule,
 }: {
   campaign: Campaign
+  module: CharacterModule
+  onDeleteModule: (
+    module: CharacterModule
+  ) => void
 }) {
   const [
     characterModule,
@@ -41,14 +49,24 @@ function CharacterModulePage({
   ] = useState<CharacterModule | null>(null)
 
   const [
-    ferretData,
-    setFerretData,
-  ] = useState<FerretModuleData | null>(null)
+    companionData,
+    setCompanionData,
+  ] = useState<CompanionModuleData | null>(null)
 
   const [
-    ferretAbilities,
-    setFerretAbilities,
-  ] = useState<FerretAbility[]>([])
+    companionAbilities,
+    setCompanionAbilities,
+  ] = useState<CompanionAbility[]>([])
+
+  const [
+    abilityPendingDeletion,
+    setAbilityPendingDeletion,
+  ] = useState<CompanionAbility | null>(null)
+
+  const [
+    isDeletingAbility,
+    setIsDeletingAbility,
+  ] = useState(false)
 
   const [
     isLoading,
@@ -70,20 +88,20 @@ function CharacterModulePage({
         )
 
       const module =
-        await getFerretModule(
+        await getCompanionModule(
           character.id
         )
 
       const moduleData =
         module
-          ? await getFerretModuleData(
+          ? await getCompanionModuleData(
               module.id
             )
           : null
 
       const abilities =
         module
-          ? await getFerretAbilities(
+          ? await getCompanionAbilities(
               module.id
             )
           : []
@@ -93,9 +111,9 @@ function CharacterModulePage({
           module ?? null
         )
 
-        setFerretAbilities(abilities)
+        setCompanionAbilities(abilities)
 
-        setFerretData(
+        setCompanionData(
           moduleData ?? null
         )
 
@@ -117,7 +135,7 @@ function CharacterModulePage({
       )
 
     const module =
-      await createFerretModule(
+      await createCompanionModule(
         campaign.id,
         character.id
       )
@@ -125,11 +143,11 @@ function CharacterModulePage({
     setCharacterModule(module)
 
     const moduleData =
-      await getFerretModuleData(
+      await getCompanionModuleData(
         module.id
       )
 
-    setFerretData(
+    setCompanionData(
       moduleData ?? null
     )
   }
@@ -145,14 +163,14 @@ function CharacterModulePage({
         setSaveStatus('saving')
 
         const updatedData =
-        await updateFerretModuleData(
+        await updateCompanionModuleData(
             characterModule.id,
             {
             name: value,
             }
         )
 
-        setFerretData(
+        setCompanionData(
         updatedData ?? null
         )
 
@@ -172,11 +190,11 @@ function CharacterModulePage({
     }
 
     const ability =
-      await addFerretAbility(
+      await addCompanionAbility(
         characterModule.id
       )
 
-    setFerretAbilities(
+    setCompanionAbilities(
       (current) => [
         ...current,
         ability,
@@ -190,21 +208,21 @@ function CharacterModulePage({
         <div className="page-heading-with-status">
             <div className="page-heading-copy">
             <h1 className="page-title">
-                Ferret
+                Companion
             </h1>
 
             <p className="page-intro">
-                Small paws, sharp instincts,
-                questionable priorities.
+              A trusted companion with instincts,
+              quirks, and a will of its own
             </p>
             </div>
 
-                        <div className="page-heading-actions">
+            <div className="page-heading-actions">
               <SaveStatus
                 status={saveStatus}
               />
 
-              <GuideHelpButton topicId="ferret" />
+              <GuideHelpButton topicId="companion" />
             </div>
             </div>
 
@@ -212,14 +230,14 @@ function CharacterModulePage({
           <p className="empty-message">
             Loading companion...
           </p>
-        ) : characterModule && ferretData ? (
+        ) : characterModule && companionData ? (
           <div>
             <label className="character-name-field companion-name-field">
               <span>Companion Name</span>
 
               <input
                 type="text"
-                value={ferretData.name}
+                value={companionData.name}
                 placeholder="Companion name"
                 onChange={(event) =>
                   handleNameChange(
@@ -234,7 +252,7 @@ function CharacterModulePage({
 
               <WritingTextarea
                 className="companion-description-editor"
-                value={ferretData.description}
+                value={companionData.description}
                 onChange={async (event) => {
                     if (!characterModule) {
                         return
@@ -244,7 +262,7 @@ function CharacterModulePage({
                         setSaveStatus('saving')
 
                         const updatedData =
-                        await updateFerretModuleData(
+                        await updateCompanionModuleData(
                             characterModule.id,
                             {
                             description:
@@ -252,7 +270,7 @@ function CharacterModulePage({
                             }
                         )
 
-                        setFerretData(
+                        setCompanionData(
                         updatedData ?? null
                         )
 
@@ -287,7 +305,7 @@ function CharacterModulePage({
                     key={value}
                     type="button"
                     className={
-                      ferretData.relationship === value
+                      companionData.relationship === value
                         ? 'companion-state-button active'
                         : 'companion-state-button'
                     }
@@ -300,14 +318,14 @@ function CharacterModulePage({
                             setSaveStatus('saving')
 
                             const updatedData =
-                            await updateFerretModuleData(
+                            await updateCompanionModuleData(
                                 characterModule.id,
                                 {
                                 relationship: value,
                                 }
                             )
 
-                            setFerretData(
+                            setCompanionData(
                             updatedData ?? null
                             )
 
@@ -344,7 +362,7 @@ function CharacterModulePage({
                     key={value}
                     type="button"
                     className={
-                      ferretData.hunger === value
+                      companionData.hunger === value
                         ? 'companion-state-button active'
                         : 'companion-state-button'
                     }
@@ -357,14 +375,14 @@ function CharacterModulePage({
                             setSaveStatus('saving')
 
                             const updatedData =
-                            await updateFerretModuleData(
+                            await updateCompanionModuleData(
                                 characterModule.id,
                                 {
                                 hunger: value,
                                 }
                             )
 
-                            setFerretData(
+                            setCompanionData(
                             updatedData ?? null
                             )
 
@@ -415,12 +433,12 @@ function CharacterModulePage({
                 </button>
             </div>
 
-          {ferretAbilities.length === 0 ? (
+          {companionAbilities.length === 0 ? (
             <p className="empty-message">
               No abilities added yet.
             </p>
           ) : (
-            ferretAbilities.map(
+            companionAbilities.map(
               (ability) => (
                 <div
                   key={ability.id}
@@ -437,7 +455,7 @@ function CharacterModulePage({
                                 setSaveStatus('saving')
 
                                 const updatedAbility =
-                                await updateFerretAbility(
+                                await updateCompanionAbility(
                                     ability.id,
                                     {
                                     name: event.target.value,
@@ -449,7 +467,7 @@ function CharacterModulePage({
                                 return
                                 }
 
-                                setFerretAbilities(
+                                setCompanionAbilities(
                                 (current) =>
                                     current.map((item) =>
                                     item.id === updatedAbility.id
@@ -470,32 +488,13 @@ function CharacterModulePage({
                     />
 
                     <button
-                        type="button"
-                        className="destructive-button companion-ability-delete"
-                        onClick={async () => {
-                        const confirmed =
-                            window.confirm(
-                            'Delete this ability?'
-                            )
-
-                        if (!confirmed) {
-                            return
-                        }
-
-                        await deleteFerretAbility(
-                            ability.id
-                        )
-
-                        setFerretAbilities(
-                            (current) =>
-                            current.filter(
-                                (item) =>
-                                item.id !== ability.id
-                            )
-                        )
-                        }}
+                      type="button"
+                      className="destructive-button companion-ability-delete"
+                      onClick={() =>
+                        setAbilityPendingDeletion(ability)
+                      }
                     >
-                        Delete Ability
+                      Delete Ability
                     </button>
                     </div>
 
@@ -512,7 +511,7 @@ function CharacterModulePage({
                             setSaveStatus('saving')
 
                             const updatedAbility =
-                            await updateFerretAbility(
+                            await updateCompanionAbility(
                                 ability.id,
                                 {
                                 description:
@@ -525,7 +524,7 @@ function CharacterModulePage({
                             return
                             }
 
-                            setFerretAbilities(
+                            setCompanionAbilities(
                             (current) =>
                                 current.map((item) =>
                                 item.id === updatedAbility.id
@@ -548,10 +547,64 @@ function CharacterModulePage({
               )
             )
           )}
-        </div>
+                </div>
+
+                <CharacterModuleActions
+          module={module}
+          onDelete={onDeleteModule}
+        />
       </section>
+
+      {abilityPendingDeletion && (
+        <ConfirmModal
+          title="Delete Ability?"
+          message={
+            abilityPendingDeletion.name.trim()
+              ? `Delete "${abilityPendingDeletion.name}"? This cannot be undone.`
+              : 'Delete this ability? This cannot be undone.'
+          }
+          confirmLabel="Delete Ability"
+          isConfirming={isDeletingAbility}
+          onCancel={() =>
+            setAbilityPendingDeletion(null)
+          }
+          onConfirm={() => {
+            if (isDeletingAbility) {
+              return
+            }
+
+            void (async () => {
+              try {
+                setIsDeletingAbility(true)
+
+                await deleteCompanionAbility(
+                  abilityPendingDeletion.id
+                )
+
+                setCompanionAbilities(
+                  (current) =>
+                    current.filter(
+                      (item) =>
+                        item.id !==
+                        abilityPendingDeletion.id
+                    )
+                )
+
+                setAbilityPendingDeletion(null)
+              } catch (error) {
+                console.error(
+                  'Could not delete companion ability.',
+                  error
+                )
+              } finally {
+                setIsDeletingAbility(false)
+              }
+            })()
+          }}
+        />
+      )}
     </>
   )
 }
 
-export default CharacterModulePage
+export default CompanionModulePage

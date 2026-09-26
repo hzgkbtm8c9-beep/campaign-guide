@@ -24,6 +24,7 @@ import type {
 
 import { useAutoGrowTextarea } from '../hooks/useAutoGrowTextarea'
 import GuideHelpButton from '../components/GuideHelpButton'
+import ConfirmModal from '../components/ConfirmModal'
 
 import {
   SaveStatus,
@@ -45,8 +46,17 @@ export default function PeoplePage({
   const [
     selectedPersonId,
     setSelectedPersonId,
-  ] =
-    useState<string | undefined>()
+  ] = useState<string | undefined>()
+
+  const [
+    personPendingDeletion,
+    setPersonPendingDeletion,
+  ] = useState<Person | null>(null)
+
+  const [
+    isDeletingPerson,
+    setIsDeletingPerson,
+  ] = useState(false)
 
   const [
     relatedSessions,
@@ -348,6 +358,51 @@ export default function PeoplePage({
     selectedPersonId,
   ])
 
+  async function handleDeletePerson() {
+    if (
+      !personPendingDeletion ||
+      isDeletingPerson
+    ) {
+      return
+    }
+
+    const personToDelete =
+      personPendingDeletion
+
+    try {
+      setIsDeletingPerson(true)
+
+      await deletePerson(
+        personToDelete.id
+      )
+
+      setPeople(
+        (current) =>
+          current.filter(
+            (person) =>
+              person.id !==
+              personToDelete.id
+          )
+      )
+
+      if (
+        selectedPersonId ===
+        personToDelete.id
+      ) {
+        setSelectedPersonId(undefined)
+      }
+
+      setPersonPendingDeletion(null)
+    } catch (error) {
+      console.error(
+        'Could not delete Person.',
+        error
+      )
+    } finally {
+      setIsDeletingPerson(false)
+    }
+  }
+
   const normalizedSearch =
     searchQuery.trim().toLowerCase()
 
@@ -471,35 +526,14 @@ export default function PeoplePage({
               <button
                 type="button"
                 className="destructive-button person-delete-button"
-              onClick={() => {
-                const confirmed =
-                  window.confirm(
-                    `Delete ${selectedPerson.name}?`
+                onClick={() =>
+                  setPersonPendingDeletion(
+                    selectedPerson
                   )
-
-                if (!confirmed) {
-                  return
                 }
-
-                void deletePerson(
-                  selectedPerson.id
-                ).then(() => {
-                  setPeople((current) =>
-                    current.filter(
-                      (person) =>
-                        person.id !==
-                        selectedPerson.id
-                    )
-                  )
-
-                  setSelectedPersonId(
-                    undefined
-                  )
-                })
-              }}
-            >
-              Delete Person
-            </button>
+              >
+                Delete Person
+              </button>
             </div>
             <div className="discovery-top-meta-row">
               <label className="discovery-category-field">
@@ -508,6 +542,7 @@ export default function PeoplePage({
                 </span>
 
                 <select
+                  className="record-select"
                   value={relationshipDraft}
                   onChange={(event) =>
                     setRelationshipDraft(
@@ -545,6 +580,7 @@ export default function PeoplePage({
 
                   <div className="discovery-merge-controls">
                     <select
+                      className="record-select"
                       value={mergeTargetId}
                       onChange={(event) =>
                         setMergeTargetId(
@@ -802,8 +838,23 @@ export default function PeoplePage({
           <div className="page-section">
             <p className="empty-message">No Person selected</p>
           </div>
-        )}
+                )}
       </section>
+
+      {personPendingDeletion && (
+        <ConfirmModal
+          title="Delete Person?"
+          message={`Delete "${personPendingDeletion.name}"? This cannot be undone.`}
+          confirmLabel="Delete Person"
+          isConfirming={isDeletingPerson}
+          onCancel={() =>
+            setPersonPendingDeletion(null)
+          }
+          onConfirm={() =>
+            void handleDeletePerson()
+          }
+        />
+      )}
     </>
   )
 }

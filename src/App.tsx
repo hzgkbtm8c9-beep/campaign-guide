@@ -4,10 +4,13 @@ import PeoplePage from './pages/PeoplePage'
 import DiscoveriesPage from './pages/DiscoveriesPage'
 import JournalPage from './pages/JournalPage'
 import CharacterPage from './pages/CharacterPage'
-import CharacterModulePage from './pages/CharacterModulePage'
+import CompanionModulePage from './pages/CompanionModulePage'
 import GoalsPage from './pages/GoalsPage'
 import RemindersPage from './pages/RemindersPage'
 import GuidePage from './pages/GuidePage'
+import WeatherModulePage from './pages/WeatherModulePage'
+import Modal from './components/Modal'
+import ConfirmModal from './components/ConfirmModal'
 import todayIllustration from './assets/today/Campaign guide image2.png'
 import leatherTexture from './assets/textures/leather-texture.png'
 import paperTexture from './assets/textures/paper-texture.png'
@@ -23,6 +26,8 @@ import {
   createCampaign,
   deleteCampaign,
   createQuickNote,
+  updateQuickNote,
+  deleteQuickNote,
   createReviewDraftCategory,
   createReviewDraftDiscoveryAndDestination,
   createReviewDraftPersonAndDestination,
@@ -34,6 +39,8 @@ import {
   getOpenReviews,
   getPeople,
   getQuickNotesForSession,
+  getCampfireShareableSessions,
+  getUncommittedReviewItems,
   getReviewDestinations,
   getReviewDraftCategories,
   getReviewDraftDiscoveries,
@@ -50,9 +57,18 @@ import {
   updateReviewItemText,
   getGoals,
   getReminders,
+  getCharacter,
+  getCharacterModules,
+  createCharacterModule,
+  deleteCharacterModule,
   exportCampaign,
   importCampaign,
   replaceCampaignFromBackup,
+  downloadCampfirePackage,
+  parseCampfireFile,
+  importCampfirePackage,
+  getOpenReviewCampfireSessionIds,
+  type CampfirePackage,
 } from './data/repository'
 
 import type {
@@ -70,6 +86,7 @@ import type {
   Session,
   Goal,
   Reminder,
+  CharacterModule,
 } from './data/database'
 
 import {
@@ -82,6 +99,9 @@ import {
   Feather,
   Bookmark,
   BookOpen,
+  Plus,
+  PawPrint,
+  Snowflake,
 } from 'lucide-react'
 
 import GuideHelpButton from './components/GuideHelpButton'
@@ -109,11 +129,10 @@ const sections: {
 }[] = [
   { id: 'today', label: 'Today' },
   { id: 'character', label: 'Character' },
-  { id: 'characterModule', label: 'Ferret' },
   { id: 'goals', label: 'Goals' },
+  { id: 'journal', label: 'Journal' },
   { id: 'people', label: 'People' },
   { id: 'discoveries', label: 'Discoveries' },
-  { id: 'journal', label: 'Journal' },
   { id: 'reminders', label: 'Reminders' },
   { id: 'guide', label: 'Guide' },
 ]
@@ -200,7 +219,7 @@ function QuickNoteModal({
           </p>
         )}
 
-        <div className="modal-actions">
+        <div className="modal-actions quick-note-actions">
           <button
             className="secondary-button"
             onClick={onClose}
@@ -221,6 +240,324 @@ function QuickNoteModal({
         </div>
       </div>
     </div>
+  )
+}
+
+function SessionNotesModal({
+  session,
+  quickNotes,
+  onClose,
+  onQuickNoteUpdated,
+  onQuickNoteDeleted,
+}: {
+  session: Session
+  quickNotes: QuickNote[]
+  onClose: () => void
+  onQuickNoteUpdated:
+    (quickNote: QuickNote) => void
+  onQuickNoteDeleted:
+    (quickNoteId: string) => void
+}) {
+  const [
+    editingQuickNoteId,
+    setEditingQuickNoteId,
+  ] = useState<string | null>(null)
+
+  const [
+    editText,
+    setEditText,
+  ] = useState('')
+
+  const [
+    quickNotePendingDeletion,
+    setQuickNotePendingDeletion,
+  ] = useState<QuickNote | null>(null)
+
+  const [
+    isSaving,
+    setIsSaving,
+  ] = useState(false)
+
+  const [
+    isDeleting,
+    setIsDeleting,
+  ] = useState(false)
+
+  const [
+    error,
+    setError,
+  ] = useState('')
+
+  function startEditing(
+    quickNote: QuickNote
+  ) {
+    setEditingQuickNoteId(
+      quickNote.id
+    )
+
+    setEditText(
+      quickNote.text
+    )
+
+    setError('')
+  }
+
+  function cancelEditing() {
+    setEditingQuickNoteId(null)
+    setEditText('')
+    setError('')
+  }
+
+  async function saveEdit(
+    quickNoteId: string
+  ) {
+    const trimmedText =
+      editText.trim()
+
+    if (!trimmedText) {
+      setError(
+        'Quick Note text is required.'
+      )
+
+      return
+    }
+
+    try {
+      setIsSaving(true)
+      setError('')
+
+      const updatedQuickNote =
+        await updateQuickNote(
+          quickNoteId,
+          trimmedText
+        )
+
+      if (!updatedQuickNote) {
+        throw new Error(
+          'Quick Note was not found.'
+        )
+      }
+
+      onQuickNoteUpdated(
+        updatedQuickNote
+      )
+
+      setEditingQuickNoteId(null)
+      setEditText('')
+    } catch (error) {
+      console.error(
+        'Could not update Quick Note.',
+        error
+      )
+
+      setError(
+        'Quick Note could not be updated.'
+      )
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function confirmDelete() {
+    if (
+      !quickNotePendingDeletion ||
+      isDeleting
+    ) {
+      return
+    }
+
+    const quickNoteToDelete =
+      quickNotePendingDeletion
+
+    try {
+      setIsDeleting(true)
+      setError('')
+
+      await deleteQuickNote(
+        quickNoteToDelete.id
+      )
+
+      onQuickNoteDeleted(
+        quickNoteToDelete.id
+      )
+
+      if (
+        editingQuickNoteId ===
+        quickNoteToDelete.id
+      ) {
+        cancelEditing()
+      }
+
+      setQuickNotePendingDeletion(null)
+    } catch (error) {
+      console.error(
+        'Could not delete Quick Note.',
+        error
+      )
+
+      setError(
+        'Quick Note could not be deleted.'
+      )
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  return (
+    <>
+      <Modal onClose={onClose}>
+        <h2 className="modal-title">
+          Session Notes
+        </h2>
+
+        <p className="modal-subtitle">
+          Session {session.sessionNumber}
+          {' · '}
+          {quickNotes.length}{' '}
+          {quickNotes.length === 1
+            ? 'note'
+            : 'notes'}
+        </p>
+
+        {quickNotes.length === 0 ? (
+          <p className="empty-message">
+            No Quick Notes captured yet.
+          </p>
+        ) : (
+          <div className="session-notes-list">
+            {quickNotes.map(
+              (quickNote, index) => {
+                const isEditing =
+                  editingQuickNoteId ===
+                  quickNote.id
+
+                return (
+                  <div
+                    className="session-note-card"
+                    key={quickNote.id}
+                  >
+                    <div className="session-note-heading">
+                      <span className="session-note-number">
+                        Quick Note{' '}
+                        {index + 1}
+                      </span>
+
+                      {!isEditing && (
+                        <div className="session-note-actions">
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() =>
+                              startEditing(
+                                quickNote
+                              )
+                            }
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() =>
+                              setQuickNotePendingDeletion(
+                                quickNote
+                              )
+                            }
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {isEditing ? (
+                      <>
+                        <textarea
+                          className="session-note-edit"
+                          value={editText}
+                          onChange={(event) =>
+                            setEditText(
+                              event.target.value
+                            )
+                          }
+                          autoFocus
+                        />
+
+                        <div className="session-note-edit-actions">
+                          <button
+                            type="button"
+                            className="primary-button compact-button"
+                            onClick={() =>
+                              void saveEdit(
+                                quickNote.id
+                              )
+                            }
+                            disabled={isSaving}
+                          >
+                            {isSaving
+                              ? 'Saving…'
+                              : 'Save'}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={
+                              cancelEditing
+                            }
+                            disabled={isSaving}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="session-note-text">
+                        {quickNote.text}
+                      </p>
+                    )}
+                  </div>
+                )
+              }
+            )}
+          </div>
+        )}
+
+        {error && (
+          <p className="form-error">
+            {error}
+          </p>
+        )}
+
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="secondary-button compact-button"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
+
+      {quickNotePendingDeletion && (
+        <ConfirmModal
+          title="Delete Quick Note?"
+          message="This Quick Note will be permanently deleted and will not appear in Session Review."
+          confirmLabel="Delete Quick Note"
+          isConfirming={isDeleting}
+          onConfirm={() =>
+            void confirmDelete()
+          }
+          onCancel={() =>
+            setQuickNotePendingDeletion(
+              null
+            )
+          }
+        />
+      )}
+    </>
   )
 }
 
@@ -1752,7 +2089,22 @@ function ReviewScreen({
         </div>
 
         <div className="review-block">
-          <h2 className="section-title">Original Quick Note</h2>
+          <div className="campfire-note-heading">
+            <h2 className="section-title">
+              Original Quick Note
+            </h2>
+
+            {sourceNote.receivedViaCampfire && (
+              <span
+                className="campfire-indicator"
+                role="img"
+                aria-label="Received through Campfire"
+                title="Received through Campfire"
+              >
+                🔥
+              </span>
+            )}
+          </div>
 
           <p className="original-note">
             {sourceNote.text}
@@ -2428,16 +2780,21 @@ function TodayPage({
   activeSession,
   quickNotes,
   openReviews,
+  campfireReviewSessionIds,
   onStartSession,
   onEndSession,
   onSessionTitleChange,
   onQuickNoteSaved,
+  onQuickNoteUpdated,
+  onQuickNoteDeleted,
   onOpenReview,
   onSwitchCampaign,
   onOpenGoals,
   onOpenReminders,
   onExportCampaign,
   onImportCampaign,
+  onExportCampfire,
+  onCampfireReceived,
 }: {
   campaign: Campaign
   activeSession:
@@ -2445,6 +2802,7 @@ function TodayPage({
     | undefined
   quickNotes: QuickNote[]
   openReviews: Session[]
+  campfireReviewSessionIds: string[]
   onStartSession:
     () => Promise<void>
   onSessionTitleChange:
@@ -2453,12 +2811,20 @@ function TodayPage({
     () => Promise<void>
   onQuickNoteSaved:
     (quickNote: QuickNote) => void
+  onQuickNoteUpdated:
+    (quickNote: QuickNote) => void
+  onQuickNoteDeleted:
+    (quickNoteId: string) => void
   onOpenReview:
     (session: Session) => Promise<void>
   onSwitchCampaign: () => void
   onExportCampaign: () => Promise<void>
   onImportCampaign:
     (file: File) => Promise<void>
+  onExportCampfire:
+    (sessionIds: string[]) => Promise<void>
+  onCampfireReceived:
+    () => Promise<void>
   onOpenGoals: () => void
   onOpenReminders: () => void
 }) {
@@ -2478,6 +2844,11 @@ function TodayPage({
   const [
     showQuickNote,
     setShowQuickNote,
+  ] = useState(false)
+
+  const [
+    showSessionNotes,
+    setShowSessionNotes,
   ] = useState(false)
 
   const [
@@ -2515,6 +2886,103 @@ function TodayPage({
     void loadTodayReferenceData()
   }, [campaign.id])
 
+  const [
+    showShareNotes,
+    setShowShareNotes,
+  ] = useState(false)
+
+  const [
+    campfireSessions,
+    setCampfireSessions,
+  ] = useState<Session[]>([])
+
+  const [
+    selectedCampfireSessionIds,
+    setSelectedCampfireSessionIds,
+  ] = useState<string[]>([])
+
+  const [
+    receivedCampfirePackage,
+    setReceivedCampfirePackage,
+  ] = useState<CampfirePackage | null>(
+    null
+  )
+
+  const campfireFileInputRef =
+    useRef<HTMLInputElement | null>(null)
+
+  const [
+    campfireReceiveSessions,
+    setCampfireReceiveSessions,
+  ] = useState<Session[]>([])
+
+  const [
+    campfireSessionMappings,
+    setCampfireSessionMappings,
+  ] = useState<Record<number, string>>({})
+
+  async function handleOpenShareNotes() {
+    try {
+      setError('')
+
+      const sessions =
+        await getCampfireShareableSessions(
+          campaign.id
+        )
+
+      setCampfireSessions(sessions)
+      setSelectedCampfireSessionIds([])
+      setShowShareNotes(true)
+    } catch (error) {
+      console.error(
+        'Could not load Campfire Sessions.',
+        error
+      )
+
+      setError(
+        'Could not load Sessions for sharing.'
+      )
+    }
+  }
+
+  async function handleReceiveCampfire() {
+    if (!receivedCampfirePackage) {
+      return
+    }
+
+    try {
+      setError('')
+
+      await importCampfirePackage(
+        campaign.id,
+        receivedCampfirePackage,
+        receivedCampfirePackage.sessions.map(
+          (_, index) => ({
+            incomingSessionIndex: index,
+            localSessionId:
+              campfireSessionMappings[index] ||
+              undefined,
+          })
+        )
+      )
+
+      await onCampfireReceived()
+
+      setReceivedCampfirePackage(null)
+      setCampfireReceiveSessions([])
+      setCampfireSessionMappings({})
+    } catch (error) {
+      console.error(
+        'Campfire import failed.',
+        error
+      )
+
+      setError(
+        'Campfire Notes could not be received.'
+      )
+    }
+  }
+
   async function handleStartSession() {
     try {
       setError('')
@@ -2549,41 +3017,30 @@ function TodayPage({
     }
   }
 
-  const shortGoal =
-    goals.find(
-      (goal) =>
-        goal.term === 'short'
-    )
+  const goalTermOrder = {
+    short: 0,
+    mid: 1,
+    long: 2,
+  }
 
-  const midGoal =
-    goals.find(
-      (goal) =>
-        goal.term === 'mid'
-    )
-
-  const longGoal =
-    goals.find(
-      (goal) =>
-        goal.term === 'long'
-    )
-
-  const todayGoals = [
-    {
-      label: 'Short Term',
-      goal: shortGoal,
-    },
-    {
-      label: 'Mid Term',
-      goal: midGoal,
-    },
-    {
-      label: 'Long Term',
-      goal: longGoal,
-    },
-  ]
+  const todayGoals =
+    goals
+      .filter(
+        (goal) =>
+          goal.status === 'active' &&
+          goal.pinnedToToday
+      )
+      .sort(
+        (a, b) =>
+          goalTermOrder[a.term] -
+          goalTermOrder[b.term]
+      )
 
   const visibleReminders =
-    reminders.slice(0, 3)
+    reminders.filter(
+      (reminder) =>
+        reminder.pinnedToToday
+    )
 
   return (
     <>
@@ -2605,26 +3062,58 @@ function TodayPage({
         </div>
 
         <div className="page-section today-session-section">
-          <h2 className="section-title">Session</h2>
+          <div className="today-session-heading">
+            <h2 className="section-title">
+              Session
+            </h2>
 
-        <div className="today-illustration">
-          <img
-            src={todayIllustration}
-            alt=""
-          />
-        </div>
+            {!activeSession && (
+              <button
+                className="primary-button compact-button"
+                onClick={
+                  handleStartSession
+                }
+                disabled={isStarting}
+              >
+                {isStarting
+                  ? 'Starting…'
+                  : 'Start New Session'}
+              </button>
+            )}
+          </div>
+
+          <div className="today-illustration">
+            <img
+              src={todayIllustration}
+              alt=""
+            />
+          </div>
 
           {activeSession ? (
             <>
               <div className="today-session-status">
-                <strong>
-                  Session{' '}
-                  {activeSession.sessionNumber}
-                </strong>
+                <div className="today-session-identity">
+                  <h3 className="subsection-title">
+                    Session{' '}
+                    {activeSession.sessionNumber}
+                  </h3>
 
-                <span>
-                  Active
-                </span>
+                  <span>
+                    Active
+                  </span>
+                </div>
+
+                <button
+                  className="secondary-button compact-button today-end-session-button"
+                  onClick={
+                    handleEndSession
+                  }
+                  disabled={isEnding}
+                >
+                  {isEnding
+                    ? 'Ending…'
+                    : 'End Session'}
+                </button>
               </div>
 
               <input
@@ -2644,28 +3133,24 @@ function TodayPage({
                 {quickNotes.length}
               </p>
 
-              <button
-                className="primary-button today-quick-note-button"
-                onClick={() =>
-                  setShowQuickNote(
-                    true
-                  )
-                }
-              >
-                Quick Note
-              </button>
-
-              <div className="today-end-session-area">
+              <div className="today-session-actions">
                 <button
-                  className="secondary-button today-end-session-button"
-                  onClick={
-                    handleEndSession
+                  className="primary-button today-quick-note-button"
+                  onClick={() =>
+                    setShowQuickNote(true)
                   }
-                  disabled={isEnding}
                 >
-                  {isEnding
-                    ? 'Ending…'
-                    : 'End Session'}
+                  + Add Quick Note
+                </button>
+
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() =>
+                    setShowSessionNotes(true)
+                  }
+                >
+                  Session Notes
                 </button>
               </div>
             </>
@@ -2675,84 +3160,143 @@ function TodayPage({
               <div className="open-reviews">
                 <h3 className="subsection-title">Open Reviews</h3>
 
-                {openReviews.map(
-                  (session) => (
-                    <div
-                      className="review-card"
-                      key={
-                        session.id
-                      }
-                    >
-                      <strong>
-                        Session{' '}
-                        {
-                          session.sessionNumber
-                        }
-                      </strong>
-
-                      <span>
-                        {session.status ===
-                        'reviewing'
-                          ? 'In progress'
-                          : 'Ready for review'}
-                      </span>
-
-                      <button
-                        className="secondary-button compact-button review-button"
-                        onClick={() =>
-                          onOpenReview(
-                            session
-                          )
+                <div className="open-review-grid">
+                  {openReviews.map(
+                    (session) => (
+                      <div
+                        className="review-card"
+                        key={
+                          session.id
                         }
                       >
-                        {session.status ===
-                        'reviewing'
-                          ? 'Resume Review'
-                          : 'Start Review'}
-                      </button>
-                    </div>
-                  )
-                )}
-              </div>
+                        <strong>
+                          Session{' '}
+                          {
+                            session.sessionNumber
+                          }
 
-              <div className="today-new-session-area">
-                <button
-                  className="primary-button"
-                  onClick={
-                    handleStartSession
-                  }
-                  disabled={
-                    isStarting
-                  }
-                >
-                  {isStarting
-                    ? 'Starting…'
-                    : 'Start New Session'}
-                </button>
+                          {campfireReviewSessionIds.includes(
+                            session.id
+                          ) && (
+                            <>
+                              {' '}
+                              <span
+                                className="campfire-indicator open-review-campfire-indicator"
+                                role="img"
+                                aria-label="Contains notes received through Campfire"
+                                title="Contains notes received through Campfire"
+                              >
+                                🔥
+                              </span>
+                            </>
+                          )}
+                        </strong>
+
+                        <span>
+                          {session.status ===
+                          'reviewing'
+                            ? 'In progress'
+                            : 'Ready for review'}
+                        </span>
+
+                        <button
+                          className="secondary-button compact-button review-button"
+                          onClick={() =>
+                            onOpenReview(
+                              session
+                            )
+                          }
+                        >
+                          {session.status ===
+                          'reviewing'
+                            ? 'Resume Review'
+                            : 'Start Review'}
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             </>
           ) : (
-            <>
-              <p>
-                No session is
-                currently active.
-              </p>
+            <p>
+              No session is currently active.
+            </p>
+          )}
+
+          <div className="today-campfire">
+            <h3 className="subsection-title">
+              Campfire
+            </h3>
+
+            <div className="today-campfire-actions">
+              <button
+                type="button"
+                className="secondary-button compact-button"
+                onClick={() => {
+                  void handleOpenShareNotes()
+                }}
+              >
+                Share Notes
+              </button>
 
               <button
-                className="primary-button"
-                onClick={
-                  handleStartSession
-                }
-                disabled={
-                  isStarting
+                type="button"
+                className="secondary-button compact-button"
+                onClick={() =>
+                  campfireFileInputRef.current?.click()
                 }
               >
-                {isStarting
-                  ? 'Starting…'
-                  : 'Start New Session'}
+                Receive Notes
               </button>
-            </>
-          )}
+
+              <input
+                ref={campfireFileInputRef}
+                type="file"
+                accept=".json,application/json"
+                hidden
+                onChange={(event) => {
+                  const file =
+                    event.target.files?.[0]
+
+                  if (!file) {
+                    return
+                  }
+
+                  void parseCampfireFile(file)
+                    .then(async (campfirePackage) => {
+                      const sessions =
+                        await getCampfireShareableSessions(
+                          campaign.id
+                        )
+
+                      setCampfireReceiveSessions(
+                        sessions
+                      )
+
+                      setCampfireSessionMappings({})
+
+                      setReceivedCampfirePackage(
+                        campfirePackage
+                      )
+                    })
+                    .catch((error) => {
+                      console.error(
+                        'Could not read Campfire file.',
+                        error
+                      )
+
+                      setError(
+                        'This file could not be read as Campfire Notes.'
+                      )
+                    })
+                    .finally(() => {
+                      event.target.value = ''
+                    })
+                }}
+              />
+            </div>
+          </div>
 
           {error && (
             <p className="form-error">
@@ -2776,34 +3320,33 @@ function TodayPage({
             </button>
           </div>
 
-          <div className="today-goal-list">
-            {todayGoals.map(
-              ({
-                label,
-                goal,
-              }) => (
+          {todayGoals.length > 0 ? (
+            <div className="today-goal-list">
+              {todayGoals.map((goal) => (
                 <div
                   className="today-goal-item"
-                  key={label}
+                  key={goal.id}
                 >
                   <strong className="subsection-title today-item-title">
-                    {label}
+                    {goal.term === 'short'
+                      ? 'Short Term'
+                      : goal.term === 'mid'
+                        ? 'Mid Term'
+                        : 'Long Term'}
                   </strong>
 
-                  {goal ? (
-                    <span>
-                      {goal.title ||
-                        'Untitled Goal'}
-                    </span>
-                  ) : (
-                    <span className="empty-message">
-                      No active goal.
-                    </span>
-                  )}
+                  <span>
+                    {goal.title ||
+                      'Untitled Goal'}
+                  </span>
                 </div>
-              )
-            )}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-message">
+              No Goals pinned to Today.
+            </p>
+          )}
         </div>
 
         <div className="page-section today-reminders-section">
@@ -2846,7 +3389,7 @@ function TodayPage({
             </div>
           ) : (
             <p className="empty-message">
-              No Reminders yet.
+              No Reminders pinned to Today.
             </p>
           )}
         </div>
@@ -2894,6 +3437,226 @@ function TodayPage({
         </div>
       </section>
 
+      {showShareNotes && (
+        <Modal
+          onClose={() =>
+            setShowShareNotes(false)
+          }
+        >
+          <h2 className="modal-title">
+            Share Notes
+          </h2>
+
+          <p>
+            Choose the past Sessions whose
+            memories you want to share.
+          </p>
+
+          {campfireSessions.length > 0 ? (
+            <div className="campfire-session-list">
+              {campfireSessions.map(
+                (session) => {
+                  const isSelected =
+                    selectedCampfireSessionIds.includes(
+                      session.id
+                    )
+
+                  return (
+                    <label
+                      className="campfire-session-option"
+                      key={session.id}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {
+                          setSelectedCampfireSessionIds(
+                            (current) =>
+                              isSelected
+                                ? current.filter(
+                                    (id) =>
+                                      id !==
+                                      session.id
+                                  )
+                                : [
+                                    ...current,
+                                    session.id,
+                                  ]
+                          )
+                        }}
+                      />
+
+                      <span>
+                        <strong>
+                          Session{' '}
+                          {
+                            session.sessionNumber
+                          }
+                        </strong>
+
+                        {session.title.trim() && (
+                          <>
+                            {' — '}
+                            {session.title.trim()}
+                          </>
+                        )}
+                      </span>
+                    </label>
+                  )
+                }
+              )}
+            </div>
+          ) : (
+            <p className="empty-message">
+              There are no ended Sessions
+              available to share yet.
+            </p>
+          )}
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() =>
+                setShowShareNotes(false)
+              }
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                selectedCampfireSessionIds.length ===
+                0
+              }
+              onClick={() => {
+                void onExportCampfire(
+                  selectedCampfireSessionIds
+                ).then(() => {
+                  setShowShareNotes(false)
+                })
+              }}
+            >
+              Share Notes
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {receivedCampfirePackage && (
+        <Modal
+          onClose={() =>
+            setReceivedCampfirePackage(null)
+          }
+        >
+          <h2 className="modal-title">
+            Receive Notes
+          </h2>
+
+          <p>
+            Notes shared by{' '}
+            <strong>
+              {receivedCampfirePackage.senderName}
+            </strong>
+            .
+          </p>
+
+          <div className="campfire-received-sessions">
+            {receivedCampfirePackage.sessions.map(
+              (session, index) => (
+                <div
+                  className="campfire-received-session"
+                  key={index}
+                >
+                  <strong>
+                    Session{' '}
+                    {session.sessionNumber}
+                    {session.title.trim() && (
+                      <>
+                        {' — '}
+                        {session.title.trim()}
+                      </>
+                    )}
+                  </strong>
+
+                  <span>
+                    {session.quickNotes.length}{' '}
+                    {session.quickNotes.length === 1
+                      ? 'Quick Note'
+                      : 'Quick Notes'}
+                  </span>
+                  <select
+                    className="record-select"
+                    value={
+                      campfireSessionMappings[index] ??
+                      ''
+                    }
+                    onChange={(event) =>
+                      setCampfireSessionMappings(
+                        (current) => ({
+                          ...current,
+                          [index]: event.target.value,
+                        })
+                      )
+                    }
+                  >
+                    <option value="">
+                      Skip this Session
+                    </option>
+
+                    {campfireReceiveSessions.map(
+                      (localSession) => (
+                        <option
+                          key={localSession.id}
+                          value={localSession.id}
+                        >
+                          Session{' '}
+                          {localSession.sessionNumber}
+                          {localSession.title.trim()
+                            ? ` — ${localSession.title.trim()}`
+                            : ''}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setReceivedCampfirePackage(null)
+                setCampfireReceiveSessions([])
+                setCampfireSessionMappings({})
+              }}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                !Object.values(
+                  campfireSessionMappings
+                ).some(Boolean)
+              }
+              onClick={() => {
+                void handleReceiveCampfire()
+              }}
+            >
+              Receive Notes
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {showQuickNote &&
         activeSession && (
           <QuickNoteModal
@@ -2914,6 +3677,21 @@ function TodayPage({
                 false
               )
             }}
+          />
+        )}
+        {showSessionNotes && activeSession && (
+          <SessionNotesModal
+            session={activeSession}
+            quickNotes={quickNotes}
+            onClose={() =>
+              setShowSessionNotes(false)
+            }
+            onQuickNoteUpdated={
+              onQuickNoteUpdated
+            }
+            onQuickNoteDeleted={
+              onQuickNoteDeleted
+            }
           />
         )}
     </>
@@ -3245,6 +4023,169 @@ function CampaignApp({
     )
 
   const [
+    showModulePicker,
+    setShowModulePicker,
+  ] = useState(false)
+
+  const [
+    characterModules,
+    setCharacterModules,
+  ] = useState<CharacterModule[]>([])
+
+  const [
+    activeModuleId,
+    setActiveModuleId,
+  ] = useState<string | null>(null)
+
+  const [
+    modulePendingDeletion,
+    setModulePendingDeletion,
+  ] = useState<CharacterModule | null>(null)
+
+  const [
+    isDeletingModule,
+    setIsDeletingModule,
+  ] = useState(false)
+
+  useEffect(() => {
+    let isCancelled = false
+
+    async function loadCharacterModules() {
+      const modules =
+        await getCharacterModules(
+          campaign.id
+        )
+
+      if (!isCancelled) {
+        setCharacterModules(modules)
+      }
+    }
+
+    void loadCharacterModules()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [campaign.id])
+
+  const activeModule =
+    characterModules.find(
+      (module) =>
+        module.id === activeModuleId
+    ) ?? null
+
+  const [
+    isAddingModule,
+    setIsAddingModule,
+  ] = useState(false)
+
+  async function handleAddModule(
+    moduleType: 'weather'
+  ) {
+    if (isAddingModule) {
+      return
+    }
+
+    const character =
+      await getCharacter(
+        campaign.id
+      )
+
+    if (!character) {
+      window.alert(
+        'Create your character before adding modules.'
+      )
+      return
+    }
+
+    try {
+      setIsAddingModule(true)
+
+      await createCharacterModule(
+        campaign.id,
+        character.id,
+        moduleType,
+        'Weather'
+      )
+
+      const modules =
+        await getCharacterModules(
+          campaign.id
+        )
+
+      setCharacterModules(modules)
+      setShowModulePicker(false)
+    } catch (error) {
+      console.error(
+        'Module could not be added.',
+        error
+      )
+
+      window.alert(
+        'The module could not be added.'
+      )
+    } finally {
+      setIsAddingModule(false)
+    }
+  }
+
+  function handleDeleteModule(
+    module: CharacterModule
+  ) {
+    setModulePendingDeletion(module)
+  }
+
+  async function handleConfirmDeleteModule() {
+    if (
+      !modulePendingDeletion ||
+      isDeletingModule
+    ) {
+      return
+    }
+
+    const moduleToDelete =
+      modulePendingDeletion
+
+    try {
+      setIsDeletingModule(true)
+
+      await deleteCharacterModule(
+        moduleToDelete.id
+      )
+
+      setCharacterModules(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+              moduleToDelete.id
+          )
+      )
+
+      if (
+        activeModuleId ===
+        moduleToDelete.id
+      ) {
+        setActiveModuleId(null)
+        setActiveSection('character')
+      }
+
+      setModulePendingDeletion(null)
+    } catch (error) {
+      console.error(
+        'Module could not be deleted.',
+        error
+      )
+
+      window.alert(
+        'The module could not be deleted.'
+      )
+    } finally {
+      setIsDeletingModule(false)
+    }
+  }
+
+  const [
     journalSessionId,
     setJournalSessionId,
   ] = useState<string | undefined>()
@@ -3335,6 +4276,11 @@ function CampaignApp({
     >([])
 
   const [
+    campfireReviewSessionIds,
+    setCampfireReviewSessionIds,
+  ] = useState<string[]>([])
+
+  const [
     reviewSession,
     setReviewSession,
   ] =
@@ -3394,16 +4340,28 @@ function CampaignApp({
         )
 
         setOpenReviews([])
+        setCampfireReviewSessionIds([])
       } else {
         setQuickNotes([])
 
-        const reviews =
-          await getOpenReviews(
+        const [
+          reviews,
+          campfireSessionIds,
+        ] = await Promise.all([
+          getOpenReviews(
             campaign.id
-          )
+          ),
+          getOpenReviewCampfireSessionIds(
+            campaign.id
+          ),
+        ])
 
         setOpenReviews(
           reviews
+        )
+
+        setCampfireReviewSessionIds(
+          campfireSessionIds
         )
       }
 
@@ -3544,9 +4502,44 @@ function CampaignApp({
     }
   }
 
-  async function handleOpenReview(
-    session: Session
-  ) {
+    async function handleExportCampfire(
+      sessionIds: string[]
+    ) {
+      try {
+        await downloadCampfirePackage(
+          campaign.id,
+          sessionIds
+        )
+      } catch (error) {
+        console.error(
+          'Campfire export failed.',
+          error
+        )
+
+        throw error
+      }
+    }
+
+    async function handleCampfireReceived() {
+      const [
+        reviews,
+        campfireSessionIds,
+      ] = await Promise.all([
+        getOpenReviews(campaign.id),
+        getOpenReviewCampfireSessionIds(
+          campaign.id
+        ),
+      ])
+
+      setOpenReviews(reviews)
+      setCampfireReviewSessionIds(
+        campfireSessionIds
+      )
+    }
+
+    async function handleOpenReview(
+      session: Session
+    ) {
     const result =
       await startOrResumeReview(
         session.id
@@ -3555,6 +4548,11 @@ function CampaignApp({
     const notes =
       await getQuickNotesForSession(
         session.id
+      )
+
+    const uncommittedReviewItems =
+      await getUncommittedReviewItems(
+        result.reviewDraft.id
       )
 
     setReviewSession({
@@ -3567,7 +4565,7 @@ function CampaignApp({
     )
 
     setReviewItems(
-      result.reviewItems
+      uncommittedReviewItems
     )
 
     setReviewQuickNotes(
@@ -3733,9 +4731,10 @@ function CampaignApp({
                 ? 'nav-item active'
                 : 'nav-item'
             }
-            onClick={() =>
+            onClick={() => {
+              setActiveModuleId(null)
               setActiveSection(section.id)
-            }
+            }}
           >
             {Icon && (
               <Icon
@@ -3750,6 +4749,59 @@ function CampaignApp({
           </button>
         )
       })}
+
+      {characterModules.map((module) => (
+        <button
+          key={module.id}
+          type="button"
+          className={
+            activeModuleId === module.id
+              ? 'nav-item active'
+              : 'nav-item'
+          }
+          onClick={() => {
+            setActiveModuleId(module.id)
+            setActiveSection(
+              'characterModule'
+            )
+          }}
+        >
+          {module.moduleType === 'weather' ? (
+            <Snowflake
+              className="nav-icon"
+              aria-hidden="true"
+            />
+          ) : (
+            <PawPrint
+              className="nav-icon"
+              aria-hidden="true"
+            />
+          )}
+
+          <span className="nav-label">
+            {module.title}
+          </span>
+        </button>
+      ))}
+
+      <button
+        type="button"
+        className="nav-item module-add-nav-item"
+        onClick={() =>
+          setShowModulePicker(true)
+        }
+        aria-label="Add module"
+        title="Add module"
+      >
+        <Plus
+          className="nav-icon"
+          aria-hidden="true"
+        />
+
+        <span className="nav-label">
+          Add Module
+        </span>
+      </button>
     </nav>
 
     <main className="book-area">
@@ -3761,16 +4813,36 @@ function CampaignApp({
             activeSession={activeSession}
             quickNotes={quickNotes}
             openReviews={openReviews}
+            campfireReviewSessionIds={campfireReviewSessionIds}
             onStartSession={handleStartSession}
             onEndSession={handleEndSession}
             onSessionTitleChange={handleSessionTitleChange}
             onExportCampaign={handleExportCampaign}
             onImportCampaign={onImportCampaign}
+            onExportCampfire={handleExportCampfire}
+            onCampfireReceived={handleCampfireReceived}
             onQuickNoteSaved={(quickNote) =>
               setQuickNotes((current) => [
                 ...current,
                 quickNote,
               ])
+            }
+            onQuickNoteUpdated={(quickNote) =>
+              setQuickNotes((current) =>
+                current.map((item) =>
+                  item.id === quickNote.id
+                    ? quickNote
+                    : item
+                )
+              )
+            }
+            onQuickNoteDeleted={(quickNoteId) =>
+              setQuickNotes((current) =>
+                current.filter(
+                  (item) =>
+                    item.id !== quickNoteId
+                )
+              )
             }
             onOpenReview={handleOpenReview}
             onOpenGoals={() =>
@@ -3784,9 +4856,19 @@ function CampaignApp({
           <CharacterPage
             campaign={campaign}
           />
-        ) : activeSection === 'characterModule' ? (
-          <CharacterModulePage
+        ) : activeSection === 'characterModule' &&
+          activeModule?.moduleType === 'companion' ? (
+          <CompanionModulePage
             campaign={campaign}
+            module={activeModule}
+            onDeleteModule={handleDeleteModule}
+          />
+        ) : activeSection === 'characterModule' &&
+          activeModule?.moduleType === 'weather' ? (
+          <WeatherModulePage
+            campaign={campaign}
+            module={activeModule}
+            onDeleteModule={handleDeleteModule}
           />
         ) : activeSection === 'goals' ? (
           <GoalsPage
@@ -3819,8 +4901,158 @@ function CampaignApp({
           />
         )}
       </div>
-    </main>
+        </main>
+
     <div id="modal-host" />
+
+    {modulePendingDeletion && (
+      <ConfirmModal
+        title={`Delete ${modulePendingDeletion.title}?`}
+        message="This will permanently remove the module and all of its stored data."
+        confirmLabel="Delete Module"
+        isConfirming={isDeletingModule}
+        onConfirm={() =>
+          void handleConfirmDeleteModule()
+        }
+        onCancel={() =>
+          setModulePendingDeletion(null)
+        }
+      />
+    )}
+
+    {showModulePicker && (
+      <Modal
+        onClose={() =>
+          setShowModulePicker(false)
+        }
+      >
+      <h2 className="modal-title">
+        Add Module
+      </h2>
+
+      <p className="module-picker-intro">
+        Add an optional section to this character's
+        Campaign Guide.
+      </p>
+
+      <div className="module-picker-grid">
+                {(() => {
+          const companionInstalled =
+            characterModules.some(
+              (module) =>
+                module.moduleType === 'companion'
+            )
+
+          return (
+            <button
+              type="button"
+              className={
+                companionInstalled
+                  ? 'module-picker-card installed'
+                  : 'module-picker-card coming-soon'
+              }
+              disabled
+            >
+              <span className="module-picker-card-title">
+                Companion
+              </span>
+
+              <span className="module-picker-card-description">
+                Track your companion, its relationship,
+                needs, and abilities.
+              </span>
+
+              <span className="module-picker-status">
+                {companionInstalled
+                  ? 'Installed'
+                  : 'Coming Soon'}
+              </span>
+            </button>
+          )
+        })()}
+
+        {(() => {
+          const weatherInstalled =
+            characterModules.some(
+              (module) =>
+                module.moduleType === 'weather'
+            )
+
+          return (
+            <button
+              type="button"
+              className={
+                weatherInstalled
+                  ? 'module-picker-card installed'
+                  : 'module-picker-card'
+              }
+              disabled={
+                weatherInstalled ||
+                isAddingModule
+              }
+              onClick={() =>
+                void handleAddModule('weather')
+              }
+            >
+              <span className="module-picker-card-title">
+                Weather
+              </span>
+
+              <span className="module-picker-card-description">
+                Track seasonal weather and daily changes.
+              </span>
+
+              <span className="module-picker-status">
+                {weatherInstalled
+                  ? 'Installed'
+                  : isAddingModule
+                    ? 'Adding…'
+                    : 'Add'}
+              </span>
+            </button>
+          )
+        })()}
+
+        <button
+          type="button"
+          className="module-picker-card coming-soon"
+          disabled
+        >
+          <span className="module-picker-card-title">
+            Time
+          </span>
+
+          <span className="module-picker-card-description">
+            Track campaign dates and the passage of
+            time.
+          </span>
+
+          <span className="module-picker-status">
+            Coming Soon
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className="module-picker-card coming-soon"
+          disabled
+        >
+          <span className="module-picker-card-title">
+            Divine Favor
+          </span>
+
+          <span className="module-picker-card-description">
+            Track standing with a deity, patron, or
+            other higher power.
+          </span>
+
+          <span className="module-picker-status">
+            Coming Soon
+          </span>
+        </button>
+      </div>
+    </Modal>
+  )}
   </div>
 </div>
 </div>
@@ -3849,6 +5081,11 @@ function App() {
     setIsLoading,
   ] =
     useState(true)
+
+  const [
+    campaignRevision,
+    setCampaignRevision,
+  ] = useState(0)
 
   useEffect(() => {
     async function loadCampaigns() {
@@ -3905,7 +5142,11 @@ async function handleImportCampaign(
         )
 
         setCampaign(
-          restoredCampaign
+          result.campaign
+        )
+
+        setCampaignRevision(
+          (current) => current + 1
         )
 
         alert(
@@ -4005,6 +5246,7 @@ async function handleImportCampaign(
 
   return (
     <CampaignApp
+      key={`${campaign.id}-${campaignRevision}`}
       campaign={campaign}
       onSwitchCampaign={() =>
         setCampaign(undefined)
